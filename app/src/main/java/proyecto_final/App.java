@@ -4,14 +4,30 @@
 package proyecto_final;
 
 import io.javalin.Javalin;
+import io.javalin.http.Context;
+import io.javalin.http.Handler;
 import io.javalin.http.staticfiles.Location;
+import proyecto_final.config.MongoDBConfig;
+import proyecto_final.model.User;
+import proyecto_final.service.UserService;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class App {
+    private static UserService userService;
+
     public String getGreeting() {
         return "Hello World!";
     }
 
     public static void main(String[] args) {
+        // Initialize MongoDB connection first
+        MongoDBConfig.initialize();
+        
+        // Then get user service (which will create admin if needed)
+        userService = UserService.getInstance();
+        
         // Create and configure Javalin app
         Javalin app = Javalin.create(config -> {
             // Enable static files from the resources/public directory
@@ -21,7 +37,129 @@ public class App {
         // Define routes
         app.get("/", ctx -> ctx.redirect("/index.html"));
         
+        // Auth API endpoints
+        app.post("/api/auth/login", handleLogin);
+        app.post("/api/auth/register", handleRegister);
+        
+        // Admin API endpoints
+        app.post("/api/admin/promote", handlePromote);
+        app.get("/api/admin/users", handleGetUsers);
+        app.delete("/api/admin/users/:username", handleDeleteUser);
+        
+        // Add shutdown hook to close MongoDB connection
+        Runtime.getRuntime().addShutdownHook(new Thread(MongoDBConfig::close));
+        
         // Log a message when the server starts
         System.out.println("Server started on http://localhost:7000");
     }
+
+    private static Handler handleLogin = ctx -> {
+        Map<String, String> credentials = ctx.bodyAsClass(Map.class);
+        String username = credentials.get("username");
+        String password = credentials.get("password");
+        
+        System.out.println("Login attempt: " + username); // Add debugging
+        
+        if (userService.validateCredentials(username, password)) {
+            User user = userService.getUser(username);
+            Map<String, Object> response = new HashMap<>();
+            
+            // Simple token
+            String token = username + "-" + System.currentTimeMillis();
+            
+            response.put("token", token);
+            response.put("isAdmin", user.isAdmin());
+            
+            System.out.println("User " + username + " logged in, isAdmin: " + user.isAdmin()); // Debug
+            
+            ctx.json(response);
+        } else {
+            System.out.println("Login failed for: " + username); // Debug
+            ctx.status(401).json(Map.of("error", "Invalid credentials"));
+        }
+    };
+    
+    private static Handler handleRegister = ctx -> {
+        Map<String, String> userInfo = ctx.bodyAsClass(Map.class);
+        String username = userInfo.get("username");
+        String password = userInfo.get("password");
+        
+        if (username == null || password == null || username.trim().isEmpty() || password.trim().isEmpty()) {
+            ctx.status(400).json(Map.of("error", "Username and password are required"));
+            return;
+        }
+        
+        if (userService.registerUser(username, password)) {
+            ctx.status(201).json(Map.of("message", "User registered successfully"));
+        } else {
+            ctx.status(409).json(Map.of("error", "Username already exists"));
+        }
+    };
+    
+    private static Handler handlePromote = ctx -> {
+        Map<String, String> promotionInfo = ctx.bodyAsClass(Map.class);
+        String adminUsername = promotionInfo.get("adminUsername");
+        String userToPromote = promotionInfo.get("userToPromote");
+        
+        // Verificar token del administrador
+        String token = ctx.header("Authorization");
+        if (token == null || !token.startsWith(adminUsername)) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        if (userService.promoteToAdmin(userToPromote, adminUsername)) {
+            ctx.json(Map.of("message", "User promoted to admin successfully"));
+        } else {
+            ctx.status(400).json(Map.of("error", "Failed to promote user"));
+        }
+    };
+    
+    private static Handler handleGetUsers = ctx -> {
+        // Verificar que sea un administrador
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        // Extraer username del token
+        String adminUsername = token.split("-")[0];
+        User admin = userService.getUser(adminUsername);
+        
+        if (admin == null || !admin.isAdmin()) {
+            ctx.status(403).json(Map.of("error", "Forbidden: Admin access required"));
+            return;
+        }
+        
+        // Convertir usuarios a un formato seguro para enviar (sin passwords)
+        Map<String, Map<String, Object>> usersInfo = new HashMap<>();
+        userService.getAllUsers().forEach((username, user) -> {
+            Map<String, Object> userInfo = new HashMap<>();
+            userInfo.put("isAdmin", user.isAdmin());
+            userInfo.put("isRootAdmin", user.isRootAdmin());
+            usersInfo.put(username, userInfo);
+        });
+        
+        ctx.json(usersInfo);
+    };
+    
+    private static Handler handleDeleteUser = ctx -> {
+        String userToDelete = ctx.pathParam("username");
+        String token = ctx.header("Authorization");
+        
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        // Extraer username del admin del token
+        String adminUsername = token.split("-")[0];
+        
+        if (userService.deleteUser(userToDelete, adminUsername)) {
+            ctx.json(Map.of("message", "User deleted successfully"));
+        } else {
+            ctx.status(400).json(Map.of("error", "Failed to delete user"));
+        }
+    };
 }

@@ -58,23 +58,28 @@ public class App {
         String username = credentials.get("username");
         String password = credentials.get("password");
         
-        System.out.println("Login attempt: " + username); // Add debugging
+        System.out.println("Login attempt: " + username);
         
+        // Check if the user exists in the database
+        User user = userService.getUser(username);
+        if (user == null) {
+            System.out.println("User not found: " + username);
+            ctx.status(401).json(Map.of("error", "Invalid credentials"));
+            return;
+        }
+        
+        // Check if password matches
         if (userService.validateCredentials(username, password)) {
-            User user = userService.getUser(username);
             Map<String, Object> response = new HashMap<>();
-            
-            // Simple token
             String token = username + "-" + System.currentTimeMillis();
             
             response.put("token", token);
             response.put("isAdmin", user.isAdmin());
             
-            System.out.println("User " + username + " logged in, isAdmin: " + user.isAdmin()); // Debug
-            
+            System.out.println("User " + username + " logged in, isAdmin: " + user.isAdmin());
             ctx.json(response);
         } else {
-            System.out.println("Login failed for: " + username); // Debug
+            System.out.println("Invalid password for user: " + username);
             ctx.status(401).json(Map.of("error", "Invalid credentials"));
         }
     };

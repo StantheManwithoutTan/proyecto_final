@@ -11,6 +11,8 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
 import org.bson.Document;
 
+import java.util.ArrayList;
+
 public class MongoDBConfig {
     private static MongoClient mongoClient;
     private static MongoDatabase database;
@@ -53,6 +55,22 @@ public class MongoDBConfig {
             usersCollection.createIndex(new Document("username", 1), indexOptions);
             
             System.out.println("MongoDB connection initialized successfully to database: " + dbName);
+            
+            // Additional logging and checks
+            System.out.println("MongoDB connected to: " + dbName);
+            System.out.println("Available collections: " + 
+                database.listCollectionNames().into(new ArrayList<>()));
+            
+            // Check User collection
+            long userCount = usersCollection.countDocuments();
+            System.out.println("Users in database: " + userCount);
+            
+            // Print first user for debugging
+            Document firstUser = usersCollection.find().first();
+            if (firstUser != null) {
+                System.out.println("First user: " + firstUser.getString("username") + 
+                    ", isAdmin: " + firstUser.getBoolean("isAdmin", false));
+            }
         } catch (Exception e) {
             System.err.println("Failed to connect to MongoDB: " + e.getMessage());
             System.exit(1);

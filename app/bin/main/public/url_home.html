@@ -50,6 +50,105 @@
                 </div>
             </div>
         </div>
+
+        <!-- URL Shortener Section -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        Acortador de URL
+                    </div>
+                    <div class="card-body">
+                        <form id="urlShortenerForm">
+                            <div class="input-group mb-3">
+                                <input type="url" class="form-control" id="originalUrl" placeholder="Ingresa URL para acortar" required>
+                                <button class="btn btn-primary" type="submit">Acortar URL</button>
+                            </div>
+                        </form>
+                        
+                        <!-- Result area -->
+                        <div id="shortUrlResult" style="display: none;" class="alert alert-success mt-3">
+                            <p>URL acortada: <a href="#" id="shortUrlLink" target="_blank"></a></p>
+                            <button class="btn btn-sm btn-secondary copy-btn" data-clipboard-target="#shortUrlLink">Copiar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- URL Analytics Section -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Mis URLs Acortadas</span>
+                        <button class="btn btn-sm btn-primary" id="refreshUrlsBtn">Actualizar</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>URL Original</th>
+                                        <th>URL Acortada</th>
+                                        <th>Accesos</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="urlsList">
+                                    <!-- URLs will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Analytics Modal -->
+                        <div class="modal fade" id="analyticsModal" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Análisis Detallado</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <h6 class="mb-3">URL: <span id="analyticsUrl"></span></h6>
+                                        
+                                        <h6>Resumen de Accesos</h6>
+                                        <p>Total de visitas: <strong id="totalVisits"></strong></p>
+                                        
+                                        <h6>Navegadores</h6>
+                                        <div id="browserChart" style="height: 200px;"></div>
+                                        
+                                        <h6 class="mt-4">Sistemas Operativos</h6>
+                                        <div id="osChart" style="height: 200px;"></div>
+                                        
+                                        <h6 class="mt-4">Accesos Recientes</h6>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Fecha</th>
+                                                        <th>IP</th>
+                                                        <th>Dominio</th>
+                                                        <th>Navegador</th>
+                                                        <th>SO</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="accessList">
+                                                    <!-- Recent accesses will be shown here -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -81,6 +180,228 @@
             localStorage.removeItem('isAdmin');
             window.location.href = '/login.html';
         });
+
+        // URL Shortener functionality
+        document.getElementById('urlShortenerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const originalUrl = document.getElementById('originalUrl').value;
+            
+            try {
+                // Add logging to debug the issue
+                console.log('Submitting URL:', originalUrl);
+                
+                const response = await fetch('/api/urls/shorten', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': token
+                    },
+                    body: JSON.stringify({ originalUrl })
+                });
+                
+                // Log the response status
+                console.log('Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const shortUrl = `${window.location.origin}/s/${data.shortCode}`;
+                    
+                    // Display the shortened URL
+                    document.getElementById('shortUrlLink').href = shortUrl;
+                    document.getElementById('shortUrlLink').textContent = shortUrl;
+                    document.getElementById('shortUrlResult').style.display = 'block';
+                    
+                    // Clear the form
+                    document.getElementById('originalUrl').value = '';
+                    
+                    // Refresh URLs list
+                    loadUserUrls();
+                } else {
+                    // Improved error handling
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    
+                    try {
+                        const errorJson = JSON.parse(errorText);
+                        alert(errorJson.error || errorJson.message || 'Error al acortar la URL');
+                    } catch (parseError) {
+                        alert('Error al acortar la URL: ' + response.status);
+                    }
+                }
+            } catch (error) {
+                console.error('Error details:', error);
+                alert('Error al comunicarse con el servidor: ' + error.message);
+            }
+        });
+
+        // Load user's shortened URLs
+        async function loadUserUrls() {
+            try {
+                const response = await fetch('/api/urls/user', {
+                    headers: {
+                        'Authorization': token
+                    }
+                });
+                
+                if (response.ok) {
+                    const urls = await response.json();
+                    const urlsList = document.getElementById('urlsList');
+                    urlsList.innerHTML = '';
+                    
+                    if (urls.length === 0) {
+                        urlsList.innerHTML = '<tr><td colspan="4" class="text-center">No has acortado ninguna URL todavía</td></tr>';
+                        return;
+                    }
+                    
+                    urls.forEach(url => {
+                        const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
+                        const row = document.createElement('tr');
+                        
+                        // Original URL (truncated if too long)
+                        const originalCell = document.createElement('td');
+                        originalCell.title = url.originalUrl;
+                        originalCell.textContent = truncateUrl(url.originalUrl);
+                        row.appendChild(originalCell);
+                        
+                        // Short URL with copy button
+                        const shortUrlCell = document.createElement('td');
+                        const shortUrlLink = document.createElement('a');
+                        shortUrlLink.href = shortUrl;
+                        shortUrlLink.textContent = shortUrl;
+                        shortUrlLink.target = '_blank';
+                        shortUrlCell.appendChild(shortUrlLink);
+                        row.appendChild(shortUrlCell);
+                        
+                        // Access count
+                        const accessCell = document.createElement('td');
+                        accessCell.textContent = url.accessCount || 0;
+                        row.appendChild(accessCell);
+                        
+                        // Actions
+                        const actionsCell = document.createElement('td');
+                        const analyticsBtn = document.createElement('button');
+                        analyticsBtn.className = 'btn btn-sm btn-info me-2';
+                        analyticsBtn.textContent = 'Ver Análisis';
+                        analyticsBtn.onclick = () => showAnalytics(url.shortCode);
+                        actionsCell.appendChild(analyticsBtn);
+                        
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'btn btn-sm btn-danger';
+                        deleteBtn.textContent = 'Eliminar';
+                        deleteBtn.onclick = () => deleteUrl(url.shortCode);
+                        actionsCell.appendChild(deleteBtn);
+                        
+                        row.appendChild(actionsCell);
+                        urlsList.appendChild(row);
+                    });
+                } else {
+                    console.error('Error loading URLs');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Function to show analytics
+        async function showAnalytics(shortCode) {
+            try {
+                const response = await fetch(`/api/urls/analytics/${shortCode}`, {
+                    headers: {
+                        'Authorization': token
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Set analytics data in modal
+                    document.getElementById('analyticsUrl').textContent = data.originalUrl;
+                    document.getElementById('totalVisits').textContent = data.accessCount;
+                    
+                    // Generate access list
+                    const accessList = document.getElementById('accessList');
+                    accessList.innerHTML = '';
+                    
+                    data.accesses.forEach(access => {
+                        const row = document.createElement('tr');
+                        
+                        const dateCell = document.createElement('td');
+                        dateCell.textContent = new Date(access.timestamp).toLocaleString();
+                        row.appendChild(dateCell);
+                        
+                        const ipCell = document.createElement('td');
+                        ipCell.textContent = access.ip;
+                        row.appendChild(ipCell);
+                        
+                        const domainCell = document.createElement('td');
+                        domainCell.textContent = access.domain || 'N/A';
+                        row.appendChild(domainCell);
+                        
+                        const browserCell = document.createElement('td');
+                        browserCell.textContent = access.browser;
+                        row.appendChild(browserCell);
+                        
+                        const osCell = document.createElement('td');
+                        osCell.textContent = access.os;
+                        row.appendChild(osCell);
+                        
+                        accessList.appendChild(row);
+                    });
+                    
+                    // Create charts if using a chart library (commented out for now)
+                    // createBrowserChart(data.browsers);
+                    // createOsChart(data.operatingSystems);
+                    
+                    // Show modal
+                    const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
+                    analyticsModal.show();
+                } else {
+                    alert('Error al cargar análisis');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al comunicarse con el servidor');
+            }
+        }
+
+        // Delete URL
+        async function deleteUrl(shortCode) {
+            if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/urls/${shortCode}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': token
+                    }
+                });
+                
+                if (response.ok) {
+                    alert('URL eliminada correctamente');
+                    loadUserUrls();
+                } else {
+                    alert('Error al eliminar la URL');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al comunicarse con el servidor');
+            }
+        }
+
+        // Helper function to truncate long URLs
+        function truncateUrl(url, maxLength = 40) {
+            if (url.length <= maxLength) return url;
+            return url.substring(0, maxLength - 3) + '...';
+        }
+
+        // Load URLs on page load
+        document.getElementById('refreshUrlsBtn').addEventListener('click', loadUserUrls);
+
+        // Initialize
+        window.addEventListener('load', loadUserUrls);
     </script>
 </body>
 </html>
+```html

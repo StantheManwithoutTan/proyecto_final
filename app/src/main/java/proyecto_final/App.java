@@ -7,15 +7,22 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.Handler;
 import io.javalin.http.staticfiles.Location;
+import io.javalin.http.util.NaiveRateLimit;
 import proyecto_final.config.MongoDBConfig;
 import proyecto_final.model.User;
 import proyecto_final.service.UserService;
+import proyecto_final.service.UrlService;
+import proyecto_final.model.ShortUrl;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 public class App {
     private static UserService userService;
+    private static UrlService urlService;
 
     public String getGreeting() {
         return "Hello World!";
@@ -27,6 +34,9 @@ public class App {
         
         // Then get user service (which will create admin if needed)
         userService = UserService.getInstance();
+        
+        // Initialize URL service
+        urlService = UrlService.getInstance();
         
         // Create and configure Javalin app
         Javalin app = Javalin.create(config -> {
@@ -44,7 +54,14 @@ public class App {
         // Admin API endpoints
         app.post("/api/admin/promote", handlePromote);
         app.get("/api/admin/users", handleGetUsers);
-        app.delete("/api/admin/users/:username", handleDeleteUser);
+        app.delete("/api/admin/users/username", handleDeleteUser);
+        
+        // URL Shortener API endpoints
+        app.post("/api/urls/shorten", handleShortenUrl);
+        app.get("/api/urls/user", handleGetUserUrls);
+        app.get("/api/urls/analytics/{shortCode}", handleGetAnalytics);
+        app.delete("/api/urls/{shortCode}", handleDeleteUrl);
+        app.get("/s/{shortCode}", handleRedirect);
         
         // Add shutdown hook to close MongoDB connection
         Runtime.getRuntime().addShutdownHook(new Thread(MongoDBConfig::close));
@@ -166,5 +183,152 @@ public class App {
         } else {
             ctx.status(400).json(Map.of("error", "Failed to delete user"));
         }
+    };
+
+    private static Handler handleShortenUrl = ctx -> {
+        // Verify authentication
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        
+        // Rate limit fix - only using the required parameters
+        NaiveRateLimit.requestPerTimeUnit(ctx, 10, TimeUnit.MINUTES);
+        
+        // Obtener y validar URL
+        Map<String, String> body = ctx.bodyAsClass(Map.class);
+        String originalUrl = body.get("originalUrl");
+        
+        if (originalUrl == null || originalUrl.isEmpty()) {
+            ctx.status(400).json(Map.of("error", "URL is required"));
+            return;
+        }
+        
+        // Asegúrate de que la URL sea válida (esquema http o https)
+        if (!Pattern.matches("^https?://.*", originalUrl)) {
+            originalUrl = "http://" + originalUrl;
+        }
+        
+        // Crear URL acortada
+        ShortUrl shortUrl = urlService.createShortUrl(originalUrl, username);
+        
+        ctx.json(Map.of(
+            "shortCode", shortUrl.getShortCode(),
+            "originalUrl", shortUrl.getOriginalUrl()
+        ));
+    };
+
+    private static Handler handleGetUserUrls = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        List<Map<String, Object>> urls = urlService.getUrlsByUser(username);
+        
+        ctx.json(urls);
+    };
+
+    private static Handler handleGetAnalytics = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        String shortCode = ctx.pathParam("shortCode");
+        
+        Map<String, Object> analytics = urlService.getAnalytics(shortCode, username);
+        
+        if (analytics == null) {
+            ctx.status(404).json(Map.of("error", "URL not found or not owned by you"));
+            return;
+        }
+        
+        ctx.json(analytics);
+    };
+
+    private static Handler handleDeleteUrl = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        String shortCode = ctx.pathParam("shortCode");
+        
+        boolean deleted = urlService.deleteUrl(shortCode, username);
+        
+        if (deleted) {
+            ctx.json(Map.of("message", "URL deleted successfully"));
+        } else {
+            ctx.status(404).json(Map.of("error", "URL not found or not owned by you"));
+        }
+    };
+
+    private static Handler handleRedirect = ctx -> {
+        String shortCode = ctx.pathParam("shortCode");
+        ShortUrl url = urlService.getUrlByShortCode(shortCode);
+        
+        if (url == null) {
+            ctx.status(404).redirect("/404.html");
+            return;
+        }
+        
+        // Extract information for analytics
+        String userAgent = ctx.header("User-Agent");
+        String ip = ctx.ip();
+        String referer = ctx.header("Referer");
+        
+        // Parse user agent to determine browser and OS (simplified here)
+        String browser = "Unknown";
+        String os = "Unknown";
+        
+        if (userAgent != null) {
+            if (userAgent.contains("Firefox")) browser = "Firefox";
+            else if (userAgent.contains("Chrome")) browser = "Chrome";
+            else if (userAgent.contains("Safari")) browser = "Safari";
+            else if (userAgent.contains("Edge")) browser = "Edge";
+            else if (userAgent.contains("MSIE") || userAgent.contains("Trident")) browser = "Internet Explorer";
+            
+            if (userAgent.contains("Windows")) os = "Windows";
+            else if (userAgent.contains("Mac OS")) os = "MacOS";
+            else if (userAgent.contains("Linux")) os = "Linux";
+            else if (userAgent.contains("Android")) os = "Android";
+            else if (userAgent.contains("iPhone") || userAgent.contains("iPad")) os = "iOS";
+        }
+        
+        // Try to extract domain from referer
+        String domain = "Direct";
+        if (referer != null && !referer.isEmpty()) {
+            try {
+                java.net.URI uri = new java.net.URI(referer);
+                domain = uri.getHost();
+            } catch (Exception e) {
+                // Ignore parsing errors
+            }
+        }
+        
+        // Create final copies of all variables for use in the lambda
+        final String finalShortCode = shortCode;
+        final String finalBrowser = browser;
+        final String finalIp = ip;
+        final String finalDomain = domain;
+        final String finalOs = os;
+        
+        // Record access asynchronously using the final copies
+        new Thread(() -> {
+            urlService.recordAccess(finalShortCode, finalBrowser, finalIp, finalDomain, finalOs);
+        }).start();
+        
+        // Redirect to the original URL
+        ctx.redirect(url.getOriginalUrl());
     };
 }

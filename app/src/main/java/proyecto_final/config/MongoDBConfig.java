@@ -41,6 +41,10 @@ public class MongoDBConfig {
             
             MongoClientSettings settings = MongoClientSettings.builder()
                     .applyConnectionString(connStr)
+                    .applyToSslSettings(builder -> {
+                        builder.enabled(true)
+                               .invalidHostNameAllowed(true); // Para pruebas
+                    })
                     .serverApi(ServerApi.builder()
                             .version(ServerApiVersion.V1)
                             .build())

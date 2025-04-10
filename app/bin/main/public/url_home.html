@@ -5,6 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home - PUCMM Survey</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .preview-cell {
+            width: 100px;
+        }
+        
+        .microlink-preview {
+            max-width: 100%;
+        }
+        
+        .microlink-card {
+            width: 50%;
+            border-radius: 6px;
+            overflow: hidden;
+            font-family: inherit;
+        }
+
+        .microlink-card img {
+            max-height: 75px; /* Limitar altura de imágenes */
+            object-fit: cover;
+        }
+        
+        /* Improve responsive behavior */
+        @media (max-width: 768px) {
+            .table-responsive {
+                overflow-x: auto;
+            }
+            
+            .preview-cell {
+                min-width: 100px;
+            }
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
@@ -70,6 +102,7 @@
                         <div id="shortUrlResult" style="display: none;" class="alert alert-success mt-3">
                             <p>URL acortada: <a href="#" id="shortUrlLink" target="_blank"></a></p>
                             <button class="btn btn-sm btn-secondary copy-btn" data-clipboard-target="#shortUrlLink">Copiar</button>
+                            <div id="previewContainer"></div>
                         </div>
                     </div>
                 </div>
@@ -89,6 +122,7 @@
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
+                                        <th>Preview</th>
                                         <th>URL Original</th>
                                         <th>URL Acortada</th>
                                         <th>Accesos</th>
@@ -150,258 +184,357 @@
             </div>
         </div>
     </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Check if user is logged in
+    const token = localStorage.getItem('token');
+    const username = localStorage.getItem('username');
+    const isAdmin = localStorage.getItem('isAdmin') === 'true';
+    
+    if (!token || !username) {
+        // Redirect to login if not logged in
+        window.location.href = '/login.html';
+    }
+    
+    // Display username
+    document.getElementById('username-display').textContent = username;
+    document.getElementById('current-user').textContent = username;
+    document.getElementById('user-role').textContent = isAdmin ? 'Administrator' : 'Regular User';
+    
+    // Show admin link if user is admin
+    if (isAdmin) {
+        document.getElementById('admin-link').style.display = 'block';
+    }
+    
+    // Logout function
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('username');
+        localStorage.removeItem('isAdmin');
+        window.location.href = '/login.html';
+    });
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Check if user is logged in
-        const token = localStorage.getItem('token');
-        const username = localStorage.getItem('username');
-        const isAdmin = localStorage.getItem('isAdmin') === 'true';
-        
-        if (!token || !username) {
-            // Redirect to login if not logged in
-            window.location.href = '/login.html';
-        }
-        
-        // Display username
-        document.getElementById('username-display').textContent = username;
-        document.getElementById('current-user').textContent = username;
-        document.getElementById('user-role').textContent = isAdmin ? 'Administrator' : 'Regular User';
-        
-        // Show admin link if user is admin
-        if (isAdmin) {
-            document.getElementById('admin-link').style.display = 'block';
-        }
-        
-        // Logout function
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('token');
-            localStorage.removeItem('username');
-            localStorage.removeItem('isAdmin');
-            window.location.href = '/login.html';
-        });
-
-        // URL Shortener functionality
-        document.getElementById('urlShortenerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const originalUrl = document.getElementById('originalUrl').value;
+    // Función para inicializar las vistas previas de Microlink
+    async function cargarVistaPrevia(container, url) {
+        try {
+            const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}`;
+            const response = await fetch(apiUrl);
             
-            try {
-                // Add logging to debug the issue
-                console.log('Submitting URL:', originalUrl);
+            if (response.ok) {
+                const data = await response.json();
                 
-                const response = await fetch('/api/urls/shorten', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': token
-                    },
-                    body: JSON.stringify({ originalUrl })
-                });
-                
-                // Log the response status
-                console.log('Response status:', response.status);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    const shortUrl = `${window.location.origin}/s/${data.shortCode}`;
+                if (data.status === 'success') {
+                    // Crear vista previa manualmente
+                    const card = document.createElement('div');
+                    card.className = 'card microlink-card';
                     
-                    // Display the shortened URL
-                    document.getElementById('shortUrlLink').href = shortUrl;
-                    document.getElementById('shortUrlLink').textContent = shortUrl;
-                    document.getElementById('shortUrlResult').style.display = 'block';
+                    let html = '';
                     
-                    // Clear the form
-                    document.getElementById('originalUrl').value = '';
+                    // Imagen si está disponible
+                    if (data.data.image && data.data.image.url) {
+                        html += `<img src="${data.data.image.url}" class="card-img-top" alt="Preview image">`;
+                    }
                     
-                    // Refresh URLs list
-                    loadUserUrls();
+                    html += `
+                        <div class="card-body">
+                            <h5 class="card-title">${data.data.title || url}</h5>
+                            ${data.data.description ? `<p class="card-text">${data.data.description}</p>` : ''}
+                            <p class="card-text"><small class="text-muted">${new URL(url).hostname}</small></p>
+                        </div>
+                    `;
+                    
+                    card.innerHTML = html;
+                    container.innerHTML = '';
+                    container.appendChild(card);
                 } else {
-                    // Improved error handling
-                    const errorText = await response.text();
-                    console.error('Error response:', errorText);
-                    
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        alert(errorJson.error || errorJson.message || 'Error al acortar la URL');
-                    } catch (parseError) {
-                        alert('Error al acortar la URL: ' + response.status);
-                    }
+                    container.innerHTML = '<div class="alert alert-warning">No se pudo generar vista previa</div>';
                 }
-            } catch (error) {
-                console.error('Error details:', error);
-                alert('Error al comunicarse con el servidor: ' + error.message);
             }
-        });
-
-        // Load user's shortened URLs
-        async function loadUserUrls() {
-            try {
-                const response = await fetch('/api/urls/user', {
-                    headers: {
-                        'Authorization': token
-                    }
-                });
-                
-                if (response.ok) {
-                    const urls = await response.json();
-                    const urlsList = document.getElementById('urlsList');
-                    urlsList.innerHTML = '';
-                    
-                    if (urls.length === 0) {
-                        urlsList.innerHTML = '<tr><td colspan="4" class="text-center">No has acortado ninguna URL todavía</td></tr>';
-                        return;
-                    }
-                    
-                    urls.forEach(url => {
-                        const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
-                        const row = document.createElement('tr');
-                        
-                        // Original URL (truncated if too long)
-                        const originalCell = document.createElement('td');
-                        originalCell.title = url.originalUrl;
-                        originalCell.textContent = truncateUrl(url.originalUrl);
-                        row.appendChild(originalCell);
-                        
-                        // Short URL with copy button
-                        const shortUrlCell = document.createElement('td');
-                        const shortUrlLink = document.createElement('a');
-                        shortUrlLink.href = shortUrl;
-                        shortUrlLink.textContent = shortUrl;
-                        shortUrlLink.target = '_blank';
-                        shortUrlCell.appendChild(shortUrlLink);
-                        row.appendChild(shortUrlCell);
-                        
-                        // Access count
-                        const accessCell = document.createElement('td');
-                        accessCell.textContent = url.accessCount || 0;
-                        row.appendChild(accessCell);
-                        
-                        // Actions
-                        const actionsCell = document.createElement('td');
-                        const analyticsBtn = document.createElement('button');
-                        analyticsBtn.className = 'btn btn-sm btn-info me-2';
-                        analyticsBtn.textContent = 'Ver Análisis';
-                        analyticsBtn.onclick = () => showAnalytics(url.shortCode);
-                        actionsCell.appendChild(analyticsBtn);
-                        
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.className = 'btn btn-sm btn-danger';
-                        deleteBtn.textContent = 'Eliminar';
-                        deleteBtn.onclick = () => deleteUrl(url.shortCode);
-                        actionsCell.appendChild(deleteBtn);
-                        
-                        row.appendChild(actionsCell);
-                        urlsList.appendChild(row);
-                    });
-                } else {
-                    console.error('Error loading URLs');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-            }
+        } catch (error) {
+            console.error('Error obteniendo vista previa:', error);
+            container.innerHTML = '<div class="alert alert-warning">Error de vista previa</div>';
         }
+    }
 
-        // Function to show analytics
-        async function showAnalytics(shortCode) {
-            try {
-                const response = await fetch(`/api/urls/analytics/${shortCode}`, {
-                    headers: {
-                        'Authorization': token
-                    }
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    // Set analytics data in modal
-                    document.getElementById('analyticsUrl').textContent = data.originalUrl;
-                    document.getElementById('totalVisits').textContent = data.accessCount;
-                    
-                    // Generate access list
-                    const accessList = document.getElementById('accessList');
-                    accessList.innerHTML = '';
-                    
-                    data.accesses.forEach(access => {
-                        const row = document.createElement('tr');
-                        
-                        const dateCell = document.createElement('td');
-                        dateCell.textContent = new Date(access.timestamp).toLocaleString();
-                        row.appendChild(dateCell);
-                        
-                        const ipCell = document.createElement('td');
-                        ipCell.textContent = access.ip;
-                        row.appendChild(ipCell);
-                        
-                        const domainCell = document.createElement('td');
-                        domainCell.textContent = access.domain || 'N/A';
-                        row.appendChild(domainCell);
-                        
-                        const browserCell = document.createElement('td');
-                        browserCell.textContent = access.browser;
-                        row.appendChild(browserCell);
-                        
-                        const osCell = document.createElement('td');
-                        osCell.textContent = access.os;
-                        row.appendChild(osCell);
-                        
-                        accessList.appendChild(row);
-                    });
-                    
-                    // Create charts if using a chart library (commented out for now)
-                    // createBrowserChart(data.browsers);
-                    // createOsChart(data.operatingSystems);
-                    
-                    // Show modal
-                    const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
-                    analyticsModal.show();
-                } else {
-                    alert('Error al cargar análisis');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al comunicarse con el servidor');
-            }
+    // Función para normalizar URLs
+    function normalizarURL(url) {
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            return 'https://' + url;
         }
+        return url;
+    }
 
-        // Delete URL
-        async function deleteUrl(shortCode) {
-            if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada?')) {
-                return;
-            }
+    // URL Shortener functionality
+    document.getElementById('urlShortenerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const originalUrl = document.getElementById('originalUrl').value;
+        
+        try {
+            console.log('Submitting URL:', originalUrl);
             
-            try {
-                const response = await fetch(`/api/urls/${shortCode}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': token
+            const response = await fetch('/api/urls/shorten', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token
+                },
+                body: JSON.stringify({ originalUrl })
+            });
+            
+            console.log('Response status:', response.status);
+            
+            if (response.ok) {
+                const data = await response.json();
+                const shortUrl = `${window.location.origin}/s/${data.shortCode}`;
+                
+                // Display the shortened URL
+                document.getElementById('shortUrlLink').href = shortUrl;
+                document.getElementById('shortUrlLink').textContent = shortUrl;
+                
+                // Add preview to result
+                const previewContainer = document.getElementById('previewContainer');
+                previewContainer.innerHTML = ''; // Clear previous preview
+                
+                const microlinkContainer = document.createElement('div');
+                microlinkContainer.className = 'microlink-preview mt-3';
+                previewContainer.appendChild(microlinkContainer);
+                
+                // Inicializar vista previa usando nuestra función segura
+                setTimeout(() => {
+                    cargarVistaPrevia(microlinkContainer, normalizarURL(data.originalUrl));
+                }, 500);
+                
+                document.getElementById('shortUrlResult').style.display = 'block';
+                document.getElementById('originalUrl').value = '';
+                
+                // Refresh URLs list
+                loadUserUrls();
+            } else {
+                const errorText = await response.text();
+                console.error('Error response:', errorText);
+                
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    alert(errorJson.error || errorJson.message || 'Error al acortar la URL');
+                } catch (parseError) {
+                    alert('Error al acortar la URL: ' + response.status);
+                }
+            }
+        } catch (error) {
+            console.error('Error details:', error);
+            alert('Error al comunicarse con el servidor: ' + error.message);
+        }
+    });
+
+    // Load user's shortened URLs
+    async function loadUserUrls() {
+        try {
+            const response = await fetch('/api/urls/user', {
+                headers: {
+                    'Authorization': token
+                }
+            });
+            
+            if (response.ok) {
+                const urls = await response.json();
+                const urlsList = document.getElementById('urlsList');
+                urlsList.innerHTML = '';
+                
+                if (urls.length === 0) {
+                    urlsList.innerHTML = '<tr><td colspan="4" class="text-center">No has acortado ninguna URL todavía</td></tr>';
+                    return;
+                }
+                
+                urls.forEach(url => {
+                    const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
+                    const row = document.createElement('tr');
+                    
+                    // Preview cell with Microlink card
+                    const previewCell = document.createElement('td');
+                    previewCell.className = 'preview-cell';
+                    
+                    // Create link preview container
+                    const previewContainer = document.createElement('div');
+                    previewContainer.className = 'microlink-preview';
+                    previewContainer.dataset.url = url.originalUrl;
+                    previewCell.appendChild(previewContainer);
+                    row.appendChild(previewCell);
+            
+
+                    // Original URL (truncated if too long)
+                    const originalCell = document.createElement('td');
+                    originalCell.title = url.originalUrl;
+                    originalCell.textContent = truncateUrl(url.originalUrl);
+                    row.appendChild(originalCell);
+                    
+                    // Short URL with copy button
+                    const shortUrlCell = document.createElement('td');
+                    const shortUrlLink = document.createElement('a');
+                    shortUrlLink.href = shortUrl;
+                    shortUrlLink.textContent = shortUrl;
+                    shortUrlLink.target = '_blank';
+                    shortUrlCell.appendChild(shortUrlLink);
+                    row.appendChild(shortUrlCell);
+                    
+                    // Access count
+                    const accessCell = document.createElement('td');
+                    accessCell.textContent = url.accessCount || 0;
+                    row.appendChild(accessCell);
+                    
+                    // Actions
+                    const actionsCell = document.createElement('td');
+                    const analyticsBtn = document.createElement('button');
+                    analyticsBtn.className = 'btn btn-sm btn-info me-2';
+                    analyticsBtn.textContent = 'Ver Análisis';
+                    analyticsBtn.onclick = () => showAnalytics(url.shortCode);
+                    actionsCell.appendChild(analyticsBtn);
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn btn-sm btn-danger';
+                    deleteBtn.textContent = 'Eliminar';
+                    deleteBtn.onclick = () => deleteUrl(url.shortCode);
+                    actionsCell.appendChild(deleteBtn);
+                    
+                    row.appendChild(actionsCell);
+                    urlsList.appendChild(row);
+
+                    // Initialize preview
+                    const previewElement = row.querySelector('.microlink-preview');
+                    if (previewElement) {
+                        setTimeout(() => {
+                            cargarVistaPrevia(previewElement, normalizarURL(url.originalUrl));
+                        }, 100);
                     }
                 });
-                
-                if (response.ok) {
-                    alert('URL eliminada correctamente');
-                    loadUserUrls();
-                } else {
-                    alert('Error al eliminar la URL');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error al comunicarse con el servidor');
+            } else {
+                console.error('Error loading URLs');
             }
+        } catch (error) {
+            console.error('Error:', error);
         }
+    }
 
-        // Helper function to truncate long URLs
-        function truncateUrl(url, maxLength = 40) {
-            if (url.length <= maxLength) return url;
-            return url.substring(0, maxLength - 3) + '...';
+    // Function to show analytics
+    async function showAnalytics(shortCode) {
+        try {
+            const response = await fetch(`/api/urls/analytics/${shortCode}`, {
+                headers: {
+                    'Authorization': token
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                // Set analytics data in modal
+                document.getElementById('analyticsUrl').textContent = data.originalUrl;
+                document.getElementById('totalVisits').textContent = data.accessCount;
+                
+                // Generate access list
+                const accessList = document.getElementById('accessList');
+                accessList.innerHTML = '';
+                
+                data.accesses.forEach(access => {
+                    const row = document.createElement('tr');
+                    
+                    const dateCell = document.createElement('td');
+                    dateCell.textContent = new Date(access.timestamp).toLocaleString();
+                    row.appendChild(dateCell);
+                    
+                    const ipCell = document.createElement('td');
+                    ipCell.textContent = access.ip;
+                    row.appendChild(ipCell);
+                    
+                    const domainCell = document.createElement('td');
+                    domainCell.textContent = access.domain || 'N/A';
+                    row.appendChild(domainCell);
+                    
+                    const browserCell = document.createElement('td');
+                    browserCell.textContent = access.browser;
+                    row.appendChild(browserCell);
+                    
+                    const osCell = document.createElement('td');
+                    osCell.textContent = access.os;
+                    row.appendChild(osCell);
+                    
+                    accessList.appendChild(row);
+                });
+                
+                // Create charts if using a chart library (commented out for now)
+                // createBrowserChart(data.browsers);
+                // createOsChart(data.operatingSystems);
+                
+                // Show modal
+                const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
+                analyticsModal.show();
+            } else {
+                alert('Error al cargar análisis');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error al comunicarse con el servidor');
         }
+    }
 
-        // Load URLs on page load
-        document.getElementById('refreshUrlsBtn').addEventListener('click', loadUserUrls);
+    // Delete URL
+    async function deleteUrl(shortCode) {
+        if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/urls/${shortCode}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': token
+                }
+            });
+            
+            if (response.ok) {
+                alert('URL eliminada correctamente');
+                loadUserUrls();
+            } else {
+                alert('Error al eliminar la URL');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error al comunicarse con el servidor');
+        }
+    }
 
-        // Initialize
-        window.addEventListener('load', loadUserUrls);
-    </script>
+    // Helper function to truncate long URLs
+    function truncateUrl(url, maxLength = 40) {
+        if (url.length <= maxLength) return url;
+        return url.substring(0, maxLength - 3) + '...';
+    }
+
+    // Load URLs on page load
+    document.getElementById('refreshUrlsBtn').addEventListener('click', loadUserUrls);
+
+    // Initialize
+    window.addEventListener('load', loadUserUrls);
+
+    // Verifica que Microlink se haya cargado
+    window.addEventListener('load', function() {
+        if (typeof microlink !== 'function') {
+            console.error('Microlink no se cargó correctamente');
+            // Intenta cargar nuevamente
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@microlink/sdk@latest/dist/microlink.min.js';
+            script.onload = function() {
+                console.log('Microlink cargado manualmente');
+                // Inicializa las vistas previas existentes
+                document.querySelectorAll('.microlink-preview').forEach(el => {
+                    if (el.dataset.url) cargarVistaPrevia(el, normalizarURL(el.dataset.url));
+                });
+            };
+            document.body.appendChild(script);
+        }
+    });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@microlink/sdk@latest/dist/microlink.min.js"></script>
 </body>
 </html>
-```html
+
+

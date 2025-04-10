@@ -38,13 +38,19 @@ dependencies {
 // Apply a specific Java toolchain to ease working on different environments.
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(17)
     }
 }
 
 application {
     // Define the main class for the application.
     mainClass = 'proyecto_final.App'
+    
+    // Añade estos parámetros para resolver problemas de SSL
+    applicationDefaultJvmArgs = [
+        "-Dhttps.protocols=TLSv1.2",
+        "-Djdk.tls.client.protocols=TLSv1.2"
+    ]
 }
 
 tasks.named('test') {

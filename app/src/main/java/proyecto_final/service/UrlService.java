@@ -204,4 +204,84 @@ public class UrlService {
         
         return analytics;
     }
+
+    // Create URL for anonymous user
+    public ShortUrl createShortUrlAnonymous(String originalUrl, String sessionId) {
+        // Generate unique short code
+        String shortCode;
+        do {
+            shortCode = generateShortCode();
+        } while (getUrlByShortCode(shortCode) != null);
+
+        // Create shortened URL for anonymous user using new constructor
+        ShortUrl shortUrl = new ShortUrl(shortCode, originalUrl, sessionId, true);
+
+        Document urlDoc = new Document()
+            .append("shortCode", shortUrl.getShortCode())
+            .append("originalUrl", shortUrl.getOriginalUrl())
+            .append("sessionId", shortUrl.getSessionId())
+            .append("createdBy", "anonymous")
+            .append("createdAt", shortUrl.getCreatedAt())
+            .append("accessCount", shortUrl.getAccessCount())
+            .append("isAnonymous", true);
+
+        urlsCollection.insertOne(urlDoc);
+        return shortUrl;
+    }
+
+    // Get URLs by session
+    public List<Map<String, Object>> getUrlsBySession(String sessionId) {
+        List<Map<String, Object>> urls = new ArrayList<>();
+        FindIterable<Document> docs = urlsCollection.find(Filters.eq("sessionId", sessionId));
+        
+        for (Document doc : docs) {
+            Map<String, Object> url = new HashMap<>();
+            url.put("shortCode", doc.getString("shortCode"));
+            url.put("originalUrl", doc.getString("originalUrl"));
+            url.put("createdAt", doc.getDate("createdAt"));
+            url.put("accessCount", doc.getInteger("accessCount", 0));
+            urls.add(url);
+        }
+        
+        return urls;
+    }
+
+    // Check if a URL belongs to a session
+    public boolean isUrlOwnedBySession(String shortCode, String sessionId) {
+        Document urlDoc = urlsCollection.find(
+            Filters.and(
+                Filters.eq("shortCode", shortCode),
+                Filters.eq("sessionId", sessionId)
+            )
+        ).first();
+        
+        return urlDoc != null;
+    }
+
+    // Get analytics for anonymous user
+    public Map<String, Object> getAnalyticsForSession(String shortCode, String sessionId) {
+        Map<String, Object> analytics = new HashMap<>();
+        
+        Document urlDoc = urlsCollection.find(
+            Filters.and(
+                Filters.eq("shortCode", shortCode),
+                Filters.eq("sessionId", sessionId)
+            )
+        ).first();
+        
+        if (urlDoc == null) {
+            return null;
+        }
+        
+        // The rest is the same as getAnalytics for registered users
+        analytics.put("shortCode", shortCode);
+        analytics.put("originalUrl", urlDoc.getString("originalUrl"));
+        analytics.put("createdAt", urlDoc.getDate("createdAt"));
+        analytics.put("accessCount", urlDoc.getInteger("accessCount", 0));
+        
+        // Get access information same as before...
+        // ...
+        
+        return analytics;
+    }
 }

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Shortener</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .preview-cell {
+            width: 250px;
+        }
+        
+        .microlink-preview {
+            max-width: 100%;
+        }
+        
+        .microlink-card {
+            width: 100%;
+            border-radius: 6px;
+            overflow: hidden;
+            font-family: inherit;
+        }
+        
+        /* Improve responsive behavior */
+        @media (max-width: 768px) {
+            .table-responsive {
+                overflow-x: auto;
+            }
+            
+            .preview-cell {
+                min-width: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">URL Shortener</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/login.html">Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/register.html">Register</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <div class="jumbotron">
+            <h1>Welcome to URL Shortener</h1>
+            <p class="lead">Create short links that are easy to share!</p>
+            <div class="alert alert-info">
+                <strong>Note:</strong> Your shortened links will be accessible permanently, but analytics will only be available during your current session unless you <a href="/register.html">register</a>.
+            </div>
+        </div>
+        
+        <!-- URL Shortener Section -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        Shorten URL
+                    </div>
+                    <div class="card-body">
+                        <form id="urlShortenerForm">
+                            <div class="input-group mb-3">
+                                <input type="url" class="form-control" id="originalUrl" placeholder="Enter URL to shorten" required>
+                                <button class="btn btn-primary" type="submit">Shorten URL</button>
+                            </div>
+                        </form>
+                        
+                        <!-- Result area -->
+                        <div id="shortUrlResult" style="display: none;" class="alert alert-success mt-3">
+                            <p>Shortened URL: <a href="#" id="shortUrlLink" target="_blank"></a></p>
+                            <button class="btn btn-sm btn-secondary copy-btn" id="copyBtn">Copy</button>
+                            <div id="previewContainer"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- URL Analytics Section -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>My Shortened URLs</span>
+                        <button class="btn btn-sm btn-primary" id="refreshUrlsBtn">Refresh</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="sessionNote" class="alert alert-warning">
+                            <strong>Session Only:</strong> These URLs will remain accessible, but this list and analytics are only available in your current browser session.
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Preview</th>
+                                        <th>Original URL</th>
+                                        <th>Shortened URL</th>
+                                        <th>Visits</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="urlsList">
+                                    <!-- URLs will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Analytics Modal (Similar to url_home.html) -->
+                        <div class="modal fade" id="analyticsModal" tabindex="-1" aria-hidden="true">
+                            <!-- Modal content similar to url_home.html -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@microlink/sdk@latest/dist/microlink.min.js"></script>
+    <script>
+        // Functions for microlink similar to url_home.html
+        function initMicrolink(container, urlToPreview) {
+            // Same implementation as in url_home.html
+        }
+        
+        function normalizarURL(url) {
+            // Same implementation as in url_home.html
+        }
+        
+        // URL Shortener functionality for anonymous users
+        document.getElementById('urlShortenerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const originalUrl = document.getElementById('originalUrl').value;
+            
+            try {
+                console.log('Submitting URL:', originalUrl);
+                
+                const response = await fetch('/api/urls/anonymous/shorten', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ originalUrl })
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const shortUrl = `${window.location.origin}/s/${data.shortCode}`;
+                    
+                    // Display the shortened URL
+                    document.getElementById('shortUrlLink').href = shortUrl;
+                    document.getElementById('shortUrlLink').textContent = shortUrl;
+                    
+                    // Add preview to result
+                    const previewContainer = document.getElementById('previewContainer');
+                    previewContainer.innerHTML = ''; // Clear previous preview
+                    
+                    const microlinkContainer = document.createElement('div');
+                    microlinkContainer.className = 'microlink-preview mt-3';
+                    previewContainer.appendChild(microlinkContainer);
+                    
+                    // Initialize Microlink
+                    setTimeout(() => {
+                        initMicrolink(microlinkContainer, normalizarURL(data.originalUrl));
+                    }, 500);
+                    
+                    document.getElementById('shortUrlResult').style.display = 'block';
+                    document.getElementById('originalUrl').value = '';
+                    
+                    // Refresh URLs list
+                    loadSessionUrls();
+                } else {
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    
+                    try {
+                        const errorJson = JSON.parse(errorText);
+                        alert(errorJson.error || errorJson.message || 'Error shortening URL');
+                    } catch (parseError) {
+                        alert('Error shortening URL: ' + response.status);
+                    }
+                }
+            } catch (error) {
+                console.error('Error details:', error);
+                alert('Error communicating with the server: ' + error.message);
+            }
+        });
+
+        // Copy button functionality
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const shortUrl = document.getElementById('shortUrlLink').textContent;
+            navigator.clipboard.writeText(shortUrl)
+                .then(() => {
+                    alert('URL copied to clipboard!');
+                })
+                .catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+        });
+
+        // Load session's shortened URLs
+        async function loadSessionUrls() {
+            try {
+                const response = await fetch('/api/urls/anonymous/session');
+                
+                if (response.ok) {
+                    const urls = await response.json();
+                    const urlsList = document.getElementById('urlsList');
+                    urlsList.innerHTML = '';
+                    
+                    if (urls.length === 0) {
+                        urlsList.innerHTML = '<tr><td colspan="5" class="text-center">No has acortado ninguna URL todavía</td></tr>';
+                        return;
+                    }
+                    
+                    urls.forEach(url => {
+                        const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
+                        const row = document.createElement('tr');
+                        
+                        // Preview cell with Microlink card
+                        const previewCell = document.createElement('td');
+                        previewCell.className = 'preview-cell';
+                        
+                        // Create link preview container
+                        const previewContainer = document.createElement('div');
+                        previewContainer.className = 'microlink-preview';
+                        previewContainer.dataset.url = url.originalUrl;
+                        previewCell.appendChild(previewContainer);
+                        row.appendChild(previewCell);
+                
+                        // Original URL (truncated if too long)
+                        const originalCell = document.createElement('td');
+                        originalCell.title = url.originalUrl;
+                        originalCell.textContent = truncateUrl(url.originalUrl);
+                        row.appendChild(originalCell);
+                        
+                        // Short URL with copy button
+                        const shortUrlCell = document.createElement('td');
+                        const shortUrlLink = document.createElement('a');
+                        shortUrlLink.href = shortUrl;
+                        shortUrlLink.textContent = shortUrl;
+                        shortUrlLink.target = '_blank';
+                        shortUrlCell.appendChild(shortUrlLink);
+                        row.appendChild(shortUrlCell);
+                        
+                        // Access count
+                        const accessCell = document.createElement('td');
+                        accessCell.textContent = url.accessCount || 0;
+                        row.appendChild(accessCell);
+                        
+                        // Actions - only analytics in anonymous mode, no delete
+                        const actionsCell = document.createElement('td');
+                        const analyticsBtn = document.createElement('button');
+                        analyticsBtn.className = 'btn btn-sm btn-info';
+                        analyticsBtn.textContent = 'Ver Análisis';
+                        analyticsBtn.onclick = () => showAnonymousAnalytics(url.shortCode);
+                        actionsCell.appendChild(analyticsBtn);
+                        
+                        row.appendChild(actionsCell);
+                        urlsList.appendChild(row);
+
+                        // Initialize preview
+                        const previewElement = row.querySelector('.microlink-preview');
+                        if (previewElement) {
+                            setTimeout(() => {
+                                initMicrolink(previewElement, normalizarURL(url.originalUrl));
+                            }, 100);
+                        }
+                    });
+                } else if (response.status === 401) {
+                    // No valid session
+                    document.getElementById('urlsList').innerHTML = 
+                        '<tr><td colspan="5" class="text-center">No session available</td></tr>';
+                } else {
+                    console.error('Error loading URLs');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Function to show analytics for anonymous users
+        async function showAnonymousAnalytics(shortCode) {
+            try {
+                const response = await fetch(`/api/urls/anonymous/analytics/${shortCode}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Set analytics data in modal
+                    document.getElementById('analyticsUrl').textContent = data.originalUrl;
+                    document.getElementById('totalVisits').textContent = data.accessCount;
+                    
+                    // Generate access list - similar to the one in url_home.html
+                    // ...
+                    
+                    // Show modal
+                    const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
+                    analyticsModal.show();
+                } else {
+                    alert('Error loading analytics');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error communicating with the server');
+            }
+        }
+
+        // Helper function to truncate long URLs
+        function truncateUrl(url, maxLength = 40) {
+            if (url.length <= maxLength) return url;
+            return url.substring(0, maxLength - 3) + '...';
+        }
+
+        // Load URLs on page load
+        document.getElementById('refreshUrlsBtn').addEventListener('click', loadSessionUrls);
+
+        // Initialize
+        window.addEventListener('load', loadSessionUrls);
+    </script>
+</body>
+</html>
+``` 

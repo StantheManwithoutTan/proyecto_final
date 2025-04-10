@@ -12,7 +12,9 @@ import proyecto_final.config.MongoDBConfig;
 import proyecto_final.model.User;
 import proyecto_final.service.UserService;
 import proyecto_final.service.UrlService;
+import proyecto_final.service.SessionService;
 import proyecto_final.model.ShortUrl;
+import proyecto_final.model.Session;
 
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +25,7 @@ import java.util.regex.Pattern;
 public class App {
     private static UserService userService;
     private static UrlService urlService;
+    private static SessionService sessionService;
 
     public String getGreeting() {
         return "Hello World!";
@@ -37,6 +40,9 @@ public class App {
         
         // Initialize URL service
         urlService = UrlService.getInstance();
+        
+        // Initialize session service
+        sessionService = SessionService.getInstance();
         
         // Create and configure Javalin app
         Javalin app = Javalin.create(config -> {
@@ -62,6 +68,11 @@ public class App {
         app.get("/api/urls/analytics/{shortCode}", handleGetAnalytics);
         app.delete("/api/urls/{shortCode}", handleDeleteUrl);
         app.get("/s/{shortCode}", handleRedirect);
+        
+        // Anonymous URL Shortener API endpoints
+        app.post("/api/urls/anonymous/shorten", handleShortenUrlAnonymous);
+        app.get("/api/urls/anonymous/session", handleGetSessionUrls);
+        app.get("/api/urls/anonymous/analytics/:shortCode", handleGetAnonymousAnalytics);
         
         // Add shutdown hook to close MongoDB connection
         Runtime.getRuntime().addShutdownHook(new Thread(MongoDBConfig::close));
@@ -330,5 +341,73 @@ public class App {
         
         // Redirect to the original URL
         ctx.redirect(url.getOriginalUrl());
+    };
+
+    private static Handler handleShortenUrlAnonymous = ctx -> {
+        // Verificar si hay un sessionId o crear uno nuevo
+        String sessionId = ctx.cookie("sessionId");
+        if (sessionId == null || !sessionService.isSessionValid(sessionId)) {
+            Session newSession = sessionService.createSession();
+            sessionId = newSession.getSessionId();
+            ctx.cookie("sessionId", sessionId, 86400); // 24 horas
+        }
+        
+        Map<String, String> body = ctx.bodyAsClass(Map.class);
+        String originalUrl = body.get("originalUrl");
+        
+        if (originalUrl == null || originalUrl.isEmpty()) {
+            ctx.status(400).json(Map.of("error", "URL is required"));
+            return;
+        }
+        
+        // Validar URL
+        if (!Pattern.matches("^https?://.*", originalUrl)) {
+            originalUrl = "http://" + originalUrl;
+        }
+        
+        // Crear URL acortada para usuario anónimo
+        ShortUrl shortUrl = urlService.createShortUrlAnonymous(originalUrl, sessionId);
+        
+        ctx.json(Map.of(
+            "shortCode", shortUrl.getShortCode(),
+            "originalUrl", shortUrl.getOriginalUrl()
+        ));
+    };
+
+    private static Handler handleGetSessionUrls = ctx -> {
+        String sessionId = ctx.cookie("sessionId");
+        if (sessionId == null || !sessionService.isSessionValid(sessionId)) {
+            ctx.status(401).json(Map.of("error", "No valid session"));
+            return;
+        }
+        
+        List<Map<String, Object>> urls = urlService.getUrlsBySession(sessionId);
+        
+        ctx.json(urls);
+    };
+
+    private static Handler handleGetAnonymousAnalytics = ctx -> {
+        String sessionId = ctx.cookie("sessionId");
+        if (sessionId == null || !sessionService.isSessionValid(sessionId)) {
+            ctx.status(401).json(Map.of("error", "No valid session"));
+            return;
+        }
+        
+        String shortCode = ctx.pathParam("shortCode");
+        
+        // Verificar que la URL pertenezca a esa sesión
+        if (!urlService.isUrlOwnedBySession(shortCode, sessionId)) {
+            ctx.status(403).json(Map.of("error", "URL not owned by this session"));
+            return;
+        }
+        
+        Map<String, Object> analytics = urlService.getAnalyticsForSession(shortCode, sessionId);
+        
+        if (analytics == null) {
+            ctx.status(404).json(Map.of("error", "URL not found"));
+            return;
+        }
+        
+        ctx.json(analytics);
     };
 }

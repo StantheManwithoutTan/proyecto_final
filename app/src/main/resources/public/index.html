@@ -1,9 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta http-equiv="refresh" content="0;url=/login.html">
+    <meta charset="UTF-8">
+    <title>URL Shortener</title>
+    <script>
+        // Check if user is logged in
+        if (localStorage.getItem('token') && localStorage.getItem('username')) {
+            // Redirect to home page for logged in users
+            window.location.href = '/url_home.html';
+        } else {
+            // Redirect to anonymous shortener for non-logged in users
+            window.location.href = '/anonymous_shortener.html';
+        }
+    </script>
 </head>
 <body>
-    Redirecting to login...
+    Redirecting...
 </body>
 </html>

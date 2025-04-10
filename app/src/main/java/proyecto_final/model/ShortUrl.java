@@ -8,13 +8,28 @@ public class ShortUrl {
     private String createdBy;
     private Date createdAt;
     private int accessCount;
+    private String sessionId; // Para usuarios no registrados
+    private boolean isAnonymous; // Para diferenciar URLs de usuarios registrados vs no registrados
 
+    // Constructor para usuario registrado
     public ShortUrl(String shortCode, String originalUrl, String createdBy) {
         this.shortCode = shortCode;
         this.originalUrl = originalUrl;
         this.createdBy = createdBy;
         this.createdAt = new Date();
         this.accessCount = 0;
+        this.isAnonymous = false;
+    }
+
+    // Constructor para usuario anónimo (añadido un parámetro boolean para diferenciar)
+    public ShortUrl(String shortCode, String originalUrl, String sessionId, boolean isAnonymous) {
+        this.shortCode = shortCode;
+        this.originalUrl = originalUrl;
+        this.sessionId = sessionId;
+        this.createdBy = "anonymous";
+        this.createdAt = new Date();
+        this.accessCount = 0;
+        this.isAnonymous = true;
     }
 
     // Getters and setters
@@ -44,5 +59,13 @@ public class ShortUrl {
 
     public void setAccessCount(int accessCount) {
         this.accessCount = accessCount;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public boolean isAnonymous() {
+        return isAnonymous;
     }
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home - PUCMM Survey</title>
+    <title>Home - URL Cortador</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .preview-cell {
@@ -41,7 +41,7 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="#">PUCMM Survey</a>
+            <a class="navbar-brand" href="#">URL Cortador</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -63,7 +63,7 @@
 
     <div class="container mt-5">
         <div class="jumbotron">
-            <h1>Welcome to PUCMM Survey System</h1>
+            <h1>Welcome to URL Cortador System</h1>
             <p class="lead">This is your home page where you can access all available features.</p>
         </div>
         
@@ -149,6 +149,11 @@
                                         <h6>Resumen de Accesos</h6>
                                         <p>Total de visitas: <strong id="totalVisits"></strong></p>
                                         
+                                        <h6>Historial de Accesos por Hora</h6>
+                                        <div id="accessTimeChart" class="text-center mb-4">
+                                            <img id="accessChartImg" class="img-fluid" style="max-width: 100%;" />
+                                        </div>
+                                        
                                         <h6>Navegadores</h6>
                                         <div id="browserChart" style="height: 200px;"></div>
                                         
@@ -183,6 +188,37 @@
                 </div>
             </div>
         </div>
+
+        <!-- Admin Only - All URLs Section -->
+        <div class="row mt-4" id="admin-all-urls-section" style="display: none;">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Todas las URLs (Panel Administrador)</span>
+                        <button class="btn btn-sm btn-primary" id="refreshAllUrlsBtn">Actualizar</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Preview</th>
+                                        <th>Usuario</th>
+                                        <th>URL Original</th>
+                                        <th>URL Acortada</th>
+                                        <th>Accesos</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allUrlsList">
+                                    <!-- All URLs will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -205,6 +241,40 @@
     // Show admin link if user is admin
     if (isAdmin) {
         document.getElementById('admin-link').style.display = 'block';
+        document.getElementById('admin-all-urls-section').style.display = 'block';
+        
+        // Load all URLs function
+        async function loadAllUrls() {
+            try {
+                const response = await fetch('/api/admin/urls', {
+                    headers: {
+                        'Authorization': token
+                    }
+                });
+                
+                if (response.ok) {
+                    const urls = await response.json();
+                    const urlsList = document.getElementById('allUrlsList');
+                    urlsList.innerHTML = '';
+                    
+                    if (urls.length === 0) {
+                        urlsList.innerHTML = '<tr><td colspan="6" class="text-center">No hay URLs acortadas en el sistema</td></tr>';
+                        return;
+                    }
+                    
+                    urls.forEach(url => {
+                        // Código similar al de loadUserUrls pero con columna adicional para el usuario creador
+                        // y sin restricción para el botón eliminar
+                    });
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+        
+        // Initialize admin functionality
+        document.getElementById('refreshAllUrlsBtn').addEventListener('click', loadAllUrls);
+        loadAllUrls();
     }
     
     // Logout function
@@ -389,13 +459,16 @@
                     analyticsBtn.textContent = 'Ver Análisis';
                     analyticsBtn.onclick = () => showAnalytics(url.shortCode);
                     actionsCell.appendChild(analyticsBtn);
-                    
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'btn btn-sm btn-danger';
-                    deleteBtn.textContent = 'Eliminar';
-                    deleteBtn.onclick = () => deleteUrl(url.shortCode);
-                    actionsCell.appendChild(deleteBtn);
-                    
+
+                    // Solo mostrar el botón eliminar para administradores
+                    if (isAdmin) {
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'btn btn-sm btn-danger';
+                        deleteBtn.textContent = 'Eliminar';
+                        deleteBtn.onclick = () => deleteUrl(url.shortCode);
+                        actionsCell.appendChild(deleteBtn);
+                    }
+
                     row.appendChild(actionsCell);
                     urlsList.appendChild(row);
 
@@ -430,6 +503,26 @@
                 // Set analytics data in modal
                 document.getElementById('analyticsUrl').textContent = data.originalUrl;
                 document.getElementById('totalVisits').textContent = data.accessCount;
+                
+                // Usar fetch para cargar la gráfica correctamente con el token en el header
+                try {
+                    const chartResponse = await fetch(`/api/urls/chart/${shortCode}`, {
+                        headers: {
+                            'Authorization': token
+                        }
+                    });
+                    
+                    if (chartResponse.ok) {
+                        const blob = await chartResponse.blob();
+                        const imageUrl = URL.createObjectURL(blob);
+                        document.getElementById('accessChartImg').src = imageUrl;
+                    } else {
+                        document.getElementById('accessTimeChart').innerHTML = 
+                            '<div class="alert alert-warning">No se pudo cargar la gráfica</div>';
+                    }
+                } catch (chartError) {
+                    console.error('Error al cargar gráfica:', chartError);
+                }
                 
                 // Generate access list
                 const accessList = document.getElementById('accessList');
@@ -532,6 +625,8 @@
             document.body.appendChild(script);
         }
     });
+
+    
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@microlink/sdk@latest/dist/microlink.min.js"></script>
 </body>

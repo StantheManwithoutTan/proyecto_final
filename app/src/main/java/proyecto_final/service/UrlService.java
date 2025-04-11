@@ -132,6 +132,25 @@ public class UrlService {
         return false;
     }
 
+    // Delete any URL regardless of owner (admin only)
+    public boolean deleteAnyUrl(String shortCode) {
+        Document urlDoc = urlsCollection.find(Filters.eq("shortCode", shortCode)).first();
+        
+        if (urlDoc == null) {
+            return false;
+        }
+        
+        DeleteResult deleteResult = urlsCollection.deleteOne(Filters.eq("shortCode", shortCode));
+        
+        // Delete related accesses
+        if (deleteResult.getDeletedCount() > 0) {
+            accessesCollection.deleteMany(Filters.eq("shortCode", shortCode));
+            return true;
+        }
+        
+        return false;
+    }
+
     // Get all URLs for a user
     public List<Map<String, Object>> getUrlsByUser(String username) {
         List<Map<String, Object>> urls = new ArrayList<>();

@@ -33,6 +33,9 @@ dependencies {
 
     // Add MongoDB dependencies
     implementation 'org.mongodb:mongodb-driver-sync:4.11.0'
+
+    // XChart para las graficas de java
+    implementation 'org.knowm.xchart:xchart:3.8.8'
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

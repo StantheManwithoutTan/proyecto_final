@@ -21,6 +21,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.SimpleTimeZone;
+import java.text.SimpleDateFormat;
+import java.text.ParseException;
+import org.knowm.xchart.CategoryChart;
+import org.knowm.xchart.CategoryChartBuilder;
+import org.knowm.xchart.BitmapEncoder;
+import java.awt.image.BufferedImage;
+import org.knowm.xchart.BitmapEncoder.BitmapFormat;
+import org.knowm.xchart.style.Styler;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 
 public class App {
     private static UserService userService;
@@ -66,13 +80,14 @@ public class App {
         app.post("/api/urls/shorten", handleShortenUrl);
         app.get("/api/urls/user", handleGetUserUrls);
         app.get("/api/urls/analytics/{shortCode}", handleGetAnalytics);
+        app.get("/api/urls/chart/{shortCode}", handleGetAccessChart); // Nuevo endpoint
         app.delete("/api/urls/{shortCode}", handleDeleteUrl);
         app.get("/s/{shortCode}", handleRedirect);
         
         // Anonymous URL Shortener API endpoints
         app.post("/api/urls/anonymous/shorten", handleShortenUrlAnonymous);
         app.get("/api/urls/anonymous/session", handleGetSessionUrls);
-        app.get("/api/urls/anonymous/analytics/:shortCode", handleGetAnonymousAnalytics);
+        app.get("/api/urls/anonymous/analytics/{shortCode}", handleGetAnonymousAnalytics);
         
         // Add shutdown hook to close MongoDB connection
         Runtime.getRuntime().addShutdownHook(new Thread(MongoDBConfig::close));
@@ -265,6 +280,87 @@ public class App {
         ctx.json(analytics);
     };
 
+    private static Handler handleGetAccessChart = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        String shortCode = ctx.pathParam("shortCode");
+        
+        // Obtener datos de acceso para este shortCode
+        Map<String, Object> analytics = urlService.getAnalytics(shortCode, username);
+        
+        if (analytics == null) {
+            ctx.status(404).json(Map.of("error", "URL not found or not authorized"));
+            return;
+        }
+        
+        // Crear la gráfica usando XChart
+        List<Map<String, Object>> accesses = (List<Map<String, Object>>) analytics.get("accesses");
+        
+        // Preparar los datos para la gráfica
+        List<Date> dates = new ArrayList<>();
+        List<Number> counts = new ArrayList<>();
+        
+        // Agrupar accesos por hora
+        Map<String, Integer> accessesByHour = new HashMap<>();
+        
+        for (Map<String, Object> access : accesses) {
+            Date timestamp = (Date) access.get("timestamp");
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:00");
+            String hourKey = sdf.format(timestamp);
+            
+            accessesByHour.put(hourKey, accessesByHour.getOrDefault(hourKey, 0) + 1);
+        }
+        
+        // Ordenar los datos por fecha
+        List<String> sortedHours = new ArrayList<>(accessesByHour.keySet());
+        Collections.sort(sortedHours);
+        
+        for (String hour : sortedHours) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:00");
+                dates.add(sdf.parse(hour));
+                counts.add(accessesByHour.get(hour));
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+        }
+        
+        // Crear el gráfico de categoría
+        CategoryChart chart = new CategoryChartBuilder()
+                .width(800)
+                .height(400)
+                .title("Accesos por Hora")
+                .xAxisTitle("Fecha y Hora")
+                .yAxisTitle("Número de Accesos")
+                .build();
+        
+        // Personalizar el gráfico
+        chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
+        chart.getStyler().setXAxisLabelRotation(45);
+        chart.getStyler().setDatePattern("yyyy-MM-dd HH:mm");
+        
+        // Añadir la serie de datos
+        chart.addSeries("Accesos", dates, counts);
+        
+        // Convertir el gráfico a un array de bytes
+        //BitmapEncoder.setBufferedImageType(BufferedImage.TYPE_INT_ARGB);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            BitmapEncoder.saveBitmap(chart, baos, BitmapEncoder.BitmapFormat.PNG);
+        } catch (IOException e) {
+            ctx.status(500).json(Map.of("error", "Failed to generate chart"));
+            return;
+        }
+        
+        // Devolver la imagen como respuesta
+        ctx.contentType("image/png").result(baos.toByteArray());
+    };
+
     private static Handler handleDeleteUrl = ctx -> {
         String token = ctx.header("Authorization");
         if (token == null) {
@@ -275,12 +371,19 @@ public class App {
         String username = token.split("-")[0];
         String shortCode = ctx.pathParam("shortCode");
         
-        boolean deleted = urlService.deleteUrl(shortCode, username);
+        // Verificar si el usuario es admin
+        User user = userService.getUser(username);
+        boolean isAdmin = (user != null && user.isAdmin());
+        
+        // Si es admin, puede eliminar cualquier URL
+        boolean deleted = isAdmin 
+            ? urlService.deleteAnyUrl(shortCode) 
+            : urlService.deleteUrl(shortCode, username);
         
         if (deleted) {
             ctx.json(Map.of("message", "URL deleted successfully"));
         } else {
-            ctx.status(404).json(Map.of("error", "URL not found or not owned by you"));
+            ctx.status(404).json(Map.of("error", "URL not found or not authorized to delete"));
         }
     };
 

@@ -35,6 +35,13 @@ import org.knowm.xchart.BitmapEncoder.BitmapFormat;
 import org.knowm.xchart.style.Styler;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.EncodeHintType;
+import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.zxing.client.j2se.MatrixToImageWriter;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
+import java.util.EnumMap;
 
 public class App {
     private static UserService userService;
@@ -83,6 +90,7 @@ public class App {
         app.get("/api/urls/user", handleGetUserUrls);
         app.get("/api/urls/analytics/{shortCode}", handleGetAnalytics);
         app.get("/api/urls/chart/{shortCode}", handleGetAccessChart); // Nuevo endpoint
+        app.get("/api/urls/qrcode/{shortCode}", handleGetQrCode); // Nuevo endpoint para QR
         app.delete("/api/urls/{shortCode}", handleDeleteUrl);
         app.get("/s/{shortCode}", handleRedirect);
         
@@ -424,23 +432,19 @@ public class App {
             ctx.status(401).json(Map.of("error", "Unauthorized"));
             return;
         }
-        
+
         String username = token.split("-")[0];
         String shortCode = ctx.pathParam("shortCode");
-        
-        // Verificar si el usuario es admin
-        User user = userService.getUser(username);
-        boolean isAdmin = (user != null && user.isAdmin());
-        
-        // Si es admin, puede eliminar cualquier URL
-        boolean deleted = isAdmin 
-            ? urlService.deleteAnyUrl(shortCode) 
-            : urlService.deleteUrl(shortCode, username);
-        
+
+        // User can only delete their own URL via this endpoint.
+        // Admins must use the /api/admin/urls/{shortCode} endpoint to delete others' URLs.
+        boolean deleted = urlService.deleteUrl(shortCode, username);
+
         if (deleted) {
             ctx.json(Map.of("message", "URL deleted successfully"));
         } else {
-            ctx.status(404).json(Map.of("error", "URL not found or not authorized to delete"));
+            // Could be not found OR not owned by this user
+            ctx.status(404).json(Map.of("error", "URL not found or you are not authorized to delete it"));
         }
     };
 
@@ -569,5 +573,41 @@ public class App {
         }
         
         ctx.json(analytics);
+    };
+
+    private static Handler handleGetQrCode = ctx -> {
+        String shortCode = ctx.pathParam("shortCode");
+        // Ideally, verify ownership or admin status if needed, similar to handleGetAccessChart
+        // String token = ctx.header("Authorization");
+        // if (token == null) { ... return 401 ... }
+        // String username = token.split("-")[0];
+        // ShortUrl url = urlService.getUrlByShortCode(shortCode); // Fetch URL to check ownership if required
+        // if (url == null || (!url.getUsername().equals(username) && !userService.getUser(username).isAdmin())) {
+        //     ctx.status(403).json(Map.of("error", "Forbidden"));
+        //     return;
+        // }
+
+        // Construct the URL the QR code should point to (e.g., the chart endpoint)
+        // Adjust the base URL if your server runs elsewhere or uses HTTPS
+        String chartUrl = "http://localhost:7000/api/urls/chart/" + shortCode;
+
+        try {
+            QRCodeWriter qrCodeWriter = new QRCodeWriter();
+            Map<EncodeHintType, Object> hints = new EnumMap<>(EncodeHintType.class);
+            hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
+            hints.put(EncodeHintType.MARGIN, 1); // Adjust margin as needed
+            hints.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.L); // Error correction level
+
+            BitMatrix bitMatrix = qrCodeWriter.encode(chartUrl, BarcodeFormat.QR_CODE, 200, 200, hints); // Adjust size
+
+            ByteArrayOutputStream pngOutputStream = new ByteArrayOutputStream();
+            MatrixToImageWriter.writeToStream(bitMatrix, "PNG", pngOutputStream);
+
+            ctx.contentType("image/png").result(pngOutputStream.toByteArray());
+
+        } catch (Exception e) {
+            System.err.println("Error generating QR code for " + shortCode + ": " + e.getMessage());
+            ctx.status(500).json(Map.of("error", "Failed to generate QR code"));
+        }
     };
 }

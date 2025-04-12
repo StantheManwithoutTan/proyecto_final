@@ -27,6 +27,8 @@ dependencies {
     // Add Javalin dependencies
     implementation 'io.javalin:javalin:5.6.3'
     implementation 'org.slf4j:slf4j-simple:2.0.9'
+    implementation 'com.google.zxing:core:3.5.3'      // Core ZXing library
+    implementation 'com.google.zxing:javase:3.5.3'    // Java SE specific features (like MatrixToImageWriter)
     
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.0'
 

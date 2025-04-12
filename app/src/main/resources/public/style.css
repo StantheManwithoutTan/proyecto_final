@@ -1,0 +1,141 @@
+/* General styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa; /* Light gray background */
+    color: #343a40; /* Darker text color */
+    padding-top: 56px; /* Adjust if navbar height changes */
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.container {
+    max-width: 1140px; /* Limit container width */
+}
+
+.jumbotron {
+    background-color: #e9ecef; /* Lighter jumbotron */
+    padding: 2rem 1rem;
+    border-radius: 0.3rem;
+}
+
+.card {
+    border: none; /* Remove default card border */
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075); /* Subtle shadow */
+    margin-bottom: 1.5rem;
+    border-radius: 0.5rem; /* Slightly more rounded corners */
+}
+
+.card-header {
+    background-color: #e3f2fd; /* Light blue header */
+    border-bottom: 1px solid #dee2e6;
+    font-weight: 600;
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+.btn-info {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+    border-color: #117a8b;
+}
+
+.table {
+    background-color: #ffffff; /* White background for tables */
+}
+
+.table thead th {
+    background-color: #f1f3f5; /* Light gray for table header */
+    border-bottom-width: 2px;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.03); /* Slightly darker stripe */
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.modal-footer {
+    background-color: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+}
+
+/* Style for Microlink previews */
+.preview-cell {
+    width: 250px; /* Adjust as needed */
+    vertical-align: middle;
+}
+
+.microlink-preview {
+    max-width: 100%;
+}
+
+.microlink-card {
+    width: 100%;
+    border-radius: 6px;
+    overflow: hidden;
+    font-family: inherit;
+    border: 1px solid #dee2e6; /* Add a subtle border */
+    background-color: #fff;
+}
+
+.microlink-card img {
+    max-height: 100px; /* Adjust image height */
+    object-fit: cover;
+}
+
+/* QR Code container */
+#qrCodeContainer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 15px 0;
+    padding: 10px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-height: 150px; /* Ensure space even while loading */
+}
+
+#qrCodeContainer img,
+#qrCodeContainer canvas {
+    max-width: 150px; /* Adjust QR code size */
+    max-height: 150px;
+}
+
+/* Center login/register forms */
+.form-container {
+    max-width: 450px;
+    margin: 50px auto;
+}

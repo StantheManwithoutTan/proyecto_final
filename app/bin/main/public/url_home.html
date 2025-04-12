@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home - URL Cortador</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
     <style>
         .preview-cell {
-            width: 100px;
+            width: 200px; /* Aumentar de 100px a 200px */
         }
         
         .microlink-preview {
@@ -15,7 +16,7 @@
         }
         
         .microlink-card {
-            width: 50%;
+            width: 100%; /* Cambiar de 50% a 100% para llenar la celda */
             border-radius: 6px;
             overflow: hidden;
             font-family: inherit;
@@ -274,37 +275,12 @@
         document.getElementById('admin-link').style.display = 'block';
         document.getElementById('admin-all-urls-section').style.display = 'block';
         
-        // Load all URLs function
-        async function loadAllUrls() {
-            try {
-                const response = await fetch('/api/admin/urls', {
-                    headers: {
-                        'Authorization': token
-                    }
-                });
-                
-                if (response.ok) {
-                    const urls = await response.json();
-                    const urlsList = document.getElementById('allUrlsList');
-                    urlsList.innerHTML = '';
-                    
-                    if (urls.length === 0) {
-                        urlsList.innerHTML = '<tr><td colspan="6" class="text-center">No hay URLs acortadas en el sistema</td></tr>';
-                        return;
-                    }
-                    
-                    urls.forEach(url => {
-                        // Código similar al de loadUserUrls pero con columna adicional para el usuario creador
-                        // y sin restricción para el botón eliminar
-                    });
-                }
-            } catch (error) {
-                console.error('Error:', error);
-            }
-        }
+        // Ocultar sección de URLs personales para administradores
+        document.querySelector('.row.mt-4:nth-of-type(3)').style.display = 'none';
         
         // Initialize admin functionality
         document.getElementById('refreshAllUrlsBtn').addEventListener('click', loadAllUrls);
+        // Llamar a loadAllUrls inmediatamente para cargar la tabla
         loadAllUrls();
     }
     
@@ -319,8 +295,11 @@
     // Función para inicializar las vistas previas de Microlink
     async function cargarVistaPrevia(container, url) {
         try {
+            // Mostrar indicador de carga
+            container.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border spinner-border-sm"></div></div>';
+            
             const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}`;
-            const response = await fetch(apiUrl);
+            const response = await fetchWithTimeout(apiUrl, {}, 8000); // 8 segundos de timeout
             
             if (response.ok) {
                 const data = await response.json();
@@ -338,10 +317,10 @@
                     }
                     
                     html += `
-                        <div class="card-body">
-                            <h5 class="card-title">${data.data.title || url}</h5>
-                            ${data.data.description ? `<p class="card-text">${data.data.description}</p>` : ''}
-                            <p class="card-text"><small class="text-muted">${new URL(url).hostname}</small></p>
+                        <div class="card-body" style="padding: 0.5rem;">
+                            <h6 class="card-title" style="font-size: 0.9rem; margin-bottom: 0.25rem;">${data.data.title || url}</h6>
+                            ${data.data.description ? `<p class="card-text" style="font-size: 0.8rem;">${truncateUrl(data.data.description, 80)}</p>` : ''}
+                            <p class="card-text"><small class="text-muted" style="font-size: 0.75rem;">${new URL(url).hostname}</small></p>
                         </div>
                     `;
                     
@@ -349,12 +328,14 @@
                     container.innerHTML = '';
                     container.appendChild(card);
                 } else {
-                    container.innerHTML = '<div class="alert alert-warning">No se pudo generar vista previa</div>';
+                    container.innerHTML = '<div class="alert alert-warning p-1 text-center" style="font-size: 0.8rem;">No se pudo generar vista previa</div>';
                 }
+            } else {
+                throw new Error(`Error ${response.status}`);
             }
         } catch (error) {
             console.error('Error obteniendo vista previa:', error);
-            container.innerHTML = '<div class="alert alert-warning">Error de vista previa</div>';
+            container.innerHTML = '<div class="alert alert-warning p-1 text-center" style="font-size: 0.8rem;">Error de vista previa</div>';
         }
     }
 
@@ -448,95 +429,97 @@
         }
     });
 
-    // Load user's shortened URLs
+    // Improved loadUserUrls function with better offline handling
     async function loadUserUrls() {
+        const urlsList = document.getElementById('urlsList');
+        urlsList.innerHTML = '<tr><td colspan="5" class="text-center"><div class="spinner-border" role="status"></div> Cargando URLs...</td></tr>';
+        
         try {
-            const response = await fetch('/api/urls/user', {
-                headers: {
-                    'Authorization': token
-                }
-            });
+            // Initialize IndexedDB first thing
+            await initIndexedDB();
             
-            if (response.ok) {
-                const urls = await response.json();
-                const urlsList = document.getElementById('urlsList');
-                urlsList.innerHTML = '';
+            // Check if we're offline
+            const isOffline = !navigator.onLine;
+            console.log('Network status:', isOffline ? 'Offline' : 'Online');
+            
+            if (isOffline) {
+                showOfflineIndicator(true);
                 
-                if (urls.length === 0) {
-                    urlsList.innerHTML = '<tr><td colspan="4" class="text-center">No has acortado ninguna URL todavía</td></tr>';
+                // Try to load from IndexedDB
+                try {
+                    const cachedUrls = await loadUrlsFromIndexedDB();
+                    console.log(`Loaded ${cachedUrls.length} URLs from IndexedDB`);
+                    
+                    if (cachedUrls && cachedUrls.length > 0) {
+                        displayUrls(cachedUrls, true);
+                    } else {
+                        urlsList.innerHTML = '<tr><td colspan="5" class="text-center">No hay URLs guardadas para mostrar offline</td></tr>';
+                    }
+                    return;
+                } catch (dbError) {
+                    console.error('Error loading from IndexedDB:', dbError);
+                    urlsList.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error cargando datos locales</td></tr>';
                     return;
                 }
-                
-                urls.forEach(url => {
-                    const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
-                    const row = document.createElement('tr');
-                    
-                    // Preview cell with Microlink card
-                    const previewCell = document.createElement('td');
-                    previewCell.className = 'preview-cell';
-                    
-                    // Create link preview container
-                    const previewContainer = document.createElement('div');
-                    previewContainer.className = 'microlink-preview';
-                    previewContainer.dataset.url = url.originalUrl;
-                    previewCell.appendChild(previewContainer);
-                    row.appendChild(previewCell);
+            }
             
-
-                    // Original URL (truncated if too long)
-                    const originalCell = document.createElement('td');
-                    originalCell.title = url.originalUrl;
-                    originalCell.textContent = truncateUrl(url.originalUrl);
-                    row.appendChild(originalCell);
-                    
-                    // Short URL with copy button
-                    const shortUrlCell = document.createElement('td');
-                    const shortUrlLink = document.createElement('a');
-                    shortUrlLink.href = shortUrl;
-                    shortUrlLink.textContent = shortUrl;
-                    shortUrlLink.target = '_blank';
-                    shortUrlCell.appendChild(shortUrlLink);
-                    row.appendChild(shortUrlCell);
-                    
-                    // Access count
-                    const accessCell = document.createElement('td');
-                    accessCell.textContent = url.accessCount || 0;
-                    row.appendChild(accessCell);
-                    
-                    // Actions
-                    const actionsCell = document.createElement('td');
-                    const analyticsBtn = document.createElement('button');
-                    analyticsBtn.className = 'btn btn-sm btn-info me-2';
-                    analyticsBtn.textContent = 'Ver Análisis';
-                    analyticsBtn.onclick = () => showAnalytics(url.shortCode);
-                    actionsCell.appendChild(analyticsBtn);
-
-                    // Solo mostrar el botón eliminar para administradores
-                    if (isAdmin) {
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.className = 'btn btn-sm btn-danger';
-                        deleteBtn.textContent = 'Eliminar';
-                        deleteBtn.onclick = () => deleteUrl(url.shortCode);
-                        actionsCell.appendChild(deleteBtn);
+            // We're online, try to fetch from server
+            showOfflineIndicator(false);
+            
+            try {
+                const response = await fetchWithTimeout('/api/urls/user', {
+                    headers: {
+                        'Authorization': token
                     }
-
-                    row.appendChild(actionsCell);
-                    urlsList.appendChild(row);
-
-                    // Initialize preview
-                    const previewElement = row.querySelector('.microlink-preview');
-                    if (previewElement) {
-                        setTimeout(() => {
-                            cargarVistaPrevia(previewElement, normalizarURL(url.originalUrl));
-                        }, 100);
-                    }
-                });
-            } else {
-                console.error('Error loading URLs');
+                }, 8000); // 8 second timeout
+                
+                if (response.ok) {
+                    const urls = await response.json();
+                    console.log(`Fetched ${urls.length} URLs from server`);
+                    
+                    // Save to IndexedDB for offline use
+                    await saveUrlsToIndexedDB(urls);
+                    
+                    // Display the URLs
+                    displayUrls(urls, false);
+                } else {
+                    throw new Error(`Server returned ${response.status}`);
+                }
+            } catch (networkError) {
+                console.warn('Network error, trying cached data:', networkError);
+                
+                // Show offline indicator since we're falling back to offline data
+                showOfflineIndicator(true);
+                
+                const cachedUrls = await loadUrlsFromIndexedDB();
+                if (cachedUrls && cachedUrls.length > 0) {
+                    displayUrls(cachedUrls, true);
+                } else {
+                    urlsList.innerHTML = '<tr><td colspan="5" class="text-center">No se pudieron cargar URLs</td></tr>';
+                }
             }
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Error in loadUserUrls:', error);
+            urlsList.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
         }
+    }
+
+    // Función para mostrar/ocultar indicador offline
+    function showOfflineIndicator(show) {
+        let indicator = document.getElementById('offlineIndicator');
+        
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'offlineIndicator';
+            indicator.className = 'alert alert-warning sticky-top mt-2';
+            indicator.innerHTML = '<strong>Modo Offline</strong>: Estás viendo datos guardados localmente';
+            
+            // Insert at the top of the container
+            const container = document.querySelector('.container');
+            container.insertBefore(indicator, container.firstChild);
+        }
+        
+        indicator.style.display = show ? 'block' : 'none';
     }
 
     // Function to show analytics
@@ -752,10 +735,128 @@
         }
     }
 
+    // Delete any URL (admin only)
+    async function deleteAnyUrl(shortCode) {
+        if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada? Esta acción es irreversible.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/admin/urls/${shortCode}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': token
+                }
+            });
+            
+            if (response.ok) {
+                alert('URL eliminada correctamente');
+                loadAllUrls(); // Reload admin URLs list
+            } else {
+                const errorData = await response.json();
+                alert('Error al eliminar la URL: ' + (errorData.error || response.status));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error al comunicarse con el servidor: ' + error.message);
+        }
+    }
+
     // Helper function to truncate long URLs
     function truncateUrl(url, maxLength = 40) {
         if (url.length <= maxLength) return url;
         return url.substring(0, maxLength - 3) + '...';
+    }
+
+    // Function to display URLs with offline support
+    function displayUrls(urls, isOfflineMode = false) {
+        const urlsList = document.getElementById('urlsList');
+        urlsList.innerHTML = '';
+        
+        if (urls.length === 0) {
+            urlsList.innerHTML = '<tr><td colspan="5" class="text-center">No has acortado ninguna URL todavía</td></tr>';
+            return;
+        }
+        
+        urls.forEach(url => {
+            const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
+            const row = document.createElement('tr');
+            
+            // Preview cell
+            const previewCell = document.createElement('td');
+            previewCell.className = 'preview-cell';
+            
+            // If offline, use a simplified preview instead of microlink
+            if (isOfflineMode) {
+                previewCell.innerHTML = `<div class="card microlink-card">
+                    <div class="card-body p-2">
+                        <h6 class="card-title" style="font-size: 0.9rem;">${truncateUrl(url.originalUrl, 30)}</h6>
+                        <p class="card-text"><small class="text-muted">Vista previa no disponible offline</small></p>
+                    </div>
+                </div>`;
+            } else {
+                const previewContainer = document.createElement('div');
+                previewContainer.className = 'microlink-preview';
+                previewContainer.dataset.url = url.originalUrl;
+                previewCell.appendChild(previewContainer);
+                
+                // Initialize preview (delayed to avoid performance issues)
+                setTimeout(() => {
+                    cargarVistaPrevia(previewContainer, normalizarURL(url.originalUrl));
+                }, 100);
+            }
+            
+            row.appendChild(previewCell);
+            
+            // Original URL (truncated if too long)
+            const originalCell = document.createElement('td');
+            originalCell.title = url.originalUrl;
+            originalCell.textContent = truncateUrl(url.originalUrl);
+            row.appendChild(originalCell);
+            
+            // Short URL with copy button
+            const shortUrlCell = document.createElement('td');
+            const shortUrlLink = document.createElement('a');
+            shortUrlLink.href = shortUrl;
+            shortUrlLink.textContent = shortUrl;
+            shortUrlLink.target = '_blank';
+            shortUrlCell.appendChild(shortUrlLink);
+            row.appendChild(shortUrlCell);
+            
+            // Access count
+            const accessCell = document.createElement('td');
+            accessCell.textContent = url.accessCount || 0;
+            row.appendChild(accessCell);
+            
+            // Actions
+            const actionsCell = document.createElement('td');
+            
+            // For the analytics button, modify behavior in offline mode
+            if (isOfflineMode) {
+                const offlineMsg = document.createElement('span');
+                offlineMsg.className = 'badge bg-secondary me-2';
+                offlineMsg.textContent = 'Análisis disponible online';
+                actionsCell.appendChild(offlineMsg);
+            } else {
+                const analyticsBtn = document.createElement('button');
+                analyticsBtn.className = 'btn btn-sm btn-info me-2';
+                analyticsBtn.textContent = 'Ver Análisis';
+                analyticsBtn.onclick = () => showAnalytics(url.shortCode);
+                actionsCell.appendChild(analyticsBtn);
+            }
+            
+            // Delete button only in online mode
+            if (!isOfflineMode) {
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-danger';
+                deleteBtn.textContent = 'Eliminar';
+                deleteBtn.onclick = () => deleteUrl(url.shortCode);
+                actionsCell.appendChild(deleteBtn);
+            }
+            
+            row.appendChild(actionsCell);
+            urlsList.appendChild(row);
+        });
     }
 
     // Load URLs on page load
@@ -791,9 +892,408 @@
             console.log('Bootstrap cargado correctamente');
         }
     });
+
+    async function loadAllUrls() {
+        try {
+            console.log('Cargando todas las URLs (modo admin)...');
+            const response = await fetch('/api/admin/urls', {
+                headers: {
+                    'Authorization': token
+                }
+            });
+            
+            console.log('Estado de la respuesta:', response.status);
+            
+            if (response.ok) {
+                const urls = await response.json();
+                console.log('URLs cargadas:', urls.length, urls);
+                
+                const urlsList = document.getElementById('allUrlsList');
+                if (!urlsList) {
+                    console.error('Error: No se encontró el elemento #allUrlsList');
+                    return;
+                }
+                
+                urlsList.innerHTML = '';
+                
+                if (urls.length === 0) {
+                    urlsList.innerHTML = '<tr><td colspan="6" class="text-center">No hay URLs acortadas en el sistema</td></tr>';
+                    return;
+                }
+                
+                urls.forEach(url => {
+                    const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
+                    const row = document.createElement('tr');
+                    
+                    // Preview cell
+                    const previewCell = document.createElement('td');
+                    previewCell.className = 'preview-cell';
+                    
+                    const previewContainer = document.createElement('div');
+                    previewContainer.className = 'microlink-preview';
+                    previewContainer.dataset.url = url.originalUrl;
+                    previewCell.appendChild(previewContainer);
+                    row.appendChild(previewCell);
+                    
+                    // Creator username cell (new column)
+                    const creatorCell = document.createElement('td');
+                    creatorCell.textContent = url.createdBy || 'anónimo';
+                    creatorCell.className = url.createdBy === 'anonymous' ? 'text-muted' : '';
+                    row.appendChild(creatorCell);
+                    
+                    // Original URL
+                    const originalCell = document.createElement('td');
+                    originalCell.title = url.originalUrl;
+                    originalCell.textContent = truncateUrl(url.originalUrl);
+                    row.appendChild(originalCell);
+                    
+                    // Short URL
+                    const shortUrlCell = document.createElement('td');
+                    const shortUrlLink = document.createElement('a');
+                    shortUrlLink.href = shortUrl;
+                    shortUrlLink.textContent = shortUrl;
+                    shortUrlLink.target = '_blank';
+                    shortUrlCell.appendChild(shortUrlLink);
+                    row.appendChild(shortUrlCell);
+                    
+                    // Access count
+                    const accessCell = document.createElement('td');
+                    accessCell.textContent = url.accessCount || 0;
+                    row.appendChild(accessCell);
+                    
+                    // Actions
+                    const actionsCell = document.createElement('td');
+                    
+                    // Analytics button
+                    const analyticsBtn = document.createElement('button');
+                    analyticsBtn.className = 'btn btn-sm btn-info me-2';
+                    analyticsBtn.textContent = 'Ver Análisis';
+                    analyticsBtn.onclick = () => showAnalytics(url.shortCode);
+                    actionsCell.appendChild(analyticsBtn);
+                    
+                    // Delete button - available for all URLs
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn btn-sm btn-danger';
+                    deleteBtn.textContent = 'Eliminar';
+                    deleteBtn.onclick = () => deleteAnyUrl(url.shortCode);
+                    actionsCell.appendChild(deleteBtn);
+                    
+                    row.appendChild(actionsCell);
+                    urlsList.appendChild(row);
+                    
+                    // Initialize preview
+                    const previewElement = row.querySelector('.microlink-preview');
+                    if (previewElement) {
+                        setTimeout(() => {
+                            cargarVistaPrevia(previewElement, normalizarURL(url.originalUrl));
+                        }, 100);
+                    }
+                });
+            } else {
+                document.getElementById('allUrlsList').innerHTML = 
+                    '<tr><td colspan="6" class="text-center text-danger">Error al cargar URLs: ' + response.status + '</td></tr>';
+            }
+        } catch (error) {
+            console.error('Error en loadAllUrls:', error);
+            document.getElementById('allUrlsList').innerHTML = 
+                '<tr><td colspan="6" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
+        }
+    }
+
+    // Verificar que el Service Worker está cargado al inicio
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => {
+                    console.log('ServiceWorker registered successfully with scope:', registration.scope);
+                })
+                .catch(error => {
+                    console.error('ServiceWorker registration failed:', error);
+                });
+        });
+    }
+
+    let db;
+    const DB_NAME = 'urlShortenerDB';
+    const URLS_STORE = 'userUrls';
+    const PENDING_STORE = 'pendingOperations';
+
+    // Single IndexedDB initialization function
+    async function initIndexedDB() {
+        return new Promise((resolve, reject) => {
+            if (db) {
+                resolve(db);
+                return;
+            }
+
+            console.log('Initializing IndexedDB...');
+            const request = indexedDB.open(DB_NAME, 1);
+            
+            request.onupgradeneeded = event => {
+                console.log('Upgrading IndexedDB schema...');
+                const db = event.target.result;
+                
+                // Create stores if they don't exist
+                if (!db.objectStoreNames.contains(URLS_STORE)) {
+                    db.createObjectStore(URLS_STORE, { keyPath: 'shortCode' });
+                    console.log('Created URLS_STORE');
+                }
+                
+                if (!db.objectStoreNames.contains(PENDING_STORE)) {
+                    db.createObjectStore(PENDING_STORE, { autoIncrement: true });
+                    console.log('Created PENDING_STORE');
+                }
+            };
+            
+            request.onsuccess = event => {
+                db = event.target.result;
+                console.log('IndexedDB initialized successfully');
+                resolve(db);
+            };
+            
+            request.onerror = event => {
+                console.error('IndexedDB initialization error:', event.target.error);
+                reject(event.target.error);
+            };
+        });
+    }
+
+    // Improved saveUrlsToIndexedDB function
+    async function saveUrlsToIndexedDB(urls) {
+        if (!db) await initIndexedDB();
+        console.log('Saving URLs to IndexedDB:', urls); // Debug log
+        
+        return new Promise((resolve, reject) => {
+            try {
+                const transaction = db.transaction(URLS_STORE, 'readwrite');
+                const store = transaction.objectStore(URLS_STORE);
+                
+                // Clear existing data first
+                const clearRequest = store.clear();
+                
+                clearRequest.onsuccess = () => {
+                    console.log('IndexedDB store cleared. Adding', urls.length, 'URLs');
+                    
+                    // If no URLs, resolve immediately
+                    if (!urls || urls.length === 0) {
+                        console.log('No URLs to save to IndexedDB');
+                        resolve();
+                        return;
+                    }
+                    
+                    let completed = 0;
+                    
+                    // Add each URL one by one
+                    urls.forEach(url => {
+                        // Ensure the URL has a shortCode property
+                        if (!url.shortCode) {
+                            console.error('URL missing shortCode property:', url);
+                            completed++;
+                            if (completed === urls.length) resolve();
+                            return;
+                        }
+                        
+                        const request = store.add(url);
+                        
+                        request.onsuccess = () => {
+                            console.log('Saved URL to IndexedDB:', url.shortCode);
+                            completed++;
+                            if (completed === urls.length) {
+                                console.log(`Successfully saved ${completed} URLs to IndexedDB`);
+                                resolve();
+                            }
+                        };
+                        
+                        request.onerror = event => {
+                            console.error('Error saving URL to IndexedDB:', event.target.error, url);
+                            completed++;
+                            if (completed === urls.length) resolve();
+                        };
+                    });
+                };
+                
+                clearRequest.onerror = event => {
+                    console.error('Failed to clear IndexedDB store:', event.target.error);
+                    reject(event.target.error);
+                };
+            } catch (error) {
+                console.error('Exception in saveUrlsToIndexedDB:', error);
+                reject(error);
+            }
+        });
+    }
+
+    // Improved loadUrlsFromIndexedDB function
+    async function loadUrlsFromIndexedDB() {
+        if (!db) await initIndexedDB();
+        
+        return new Promise((resolve, reject) => {
+            try {
+                const transaction = db.transaction(URLS_STORE, 'readonly');
+                const store = transaction.objectStore(URLS_STORE);
+                const request = store.getAll();
+                
+                request.onsuccess = () => {
+                    console.log(`Recuperadas ${request.result.length} URLs de IndexedDB`);
+                    resolve(request.result);
+                };
+                
+                request.onerror = event => {
+                    console.error('Error al recuperar URLs de IndexedDB:', event.target.error);
+                    reject(event.target.error);
+                };
+            } catch (error) {
+                console.error('Error accediendo a IndexedDB:', error);
+                reject(error);
+            }
+        });
+    }
+
+    // Guardar operación pendiente para sincronización
+    async function savePendingOperation(operation) {
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(PENDING_STORE, 'readwrite');
+            const store = transaction.objectStore(PENDING_STORE);
+            const request = store.add(operation);
+            
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    // Añadir al final del script
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Inicializar IndexedDB
+        try {
+            await initIndexedDB();
+            console.log('IndexedDB inicializada correctamente');
+        } catch (error) {
+            console.error('Error inicializando IndexedDB:', error);
+        }
+        
+        // Verificar estado de conectividad inicial
+        if (!navigator.onLine) {
+            showOfflineIndicator(true);
+        }
+        
+        // Resto de inicializaciones
+    });
+
+    // Enhanced page initialization
+    document.addEventListener('DOMContentLoaded', async () => {
+      console.log('Page loaded, initializing...');
+      
+      // Check if user is logged in before proceeding
+      if (!token || !username) {
+        console.log('No authentication found, redirecting to login');
+        window.location.href = '/login.html';
+        return;
+      }
+      
+      // Register service worker first
+      if ('serviceWorker' in navigator) {
+        try {
+          const registration = await navigator.serviceWorker.register('/service-worker.js');
+          console.log('ServiceWorker registered with scope:', registration.scope);
+          
+          // If service worker is active, send auth token
+          if (navigator.serviceWorker.controller) {
+            registerAuthWithServiceWorker();
+          } else {
+            // Wait for the service worker to be ready
+            navigator.serviceWorker.ready.then(() => {
+              console.log('Service worker is now ready');
+              registerAuthWithServiceWorker();
+            });
+          }
+        } catch (error) {
+          console.error('ServiceWorker registration failed:', error);
+        }
+      }
+      
+      // Then initialize IndexedDB
+      try {
+        await initIndexedDB();
+        console.log('IndexedDB initialized successfully');
+      } catch (error) {
+        console.error('Error initializing IndexedDB:', error);
+      }
+      
+      // Update UI based on connectivity
+      updateOnlineStatus();
+      
+      // Finally load URLs
+      await loadUserUrls();
+      
+      // Set up event handlers for the rest of the page
+      initializePageEventHandlers();
+    });
+
+    // Función mejorada para actualizar estado de conexión
+    function updateOnlineStatus() {
+        const isOffline = !navigator.onLine;
+        console.log('Estado de conexión:', isOffline ? 'Offline' : 'Online');
+        
+        // Actualizar indicador solo si cambió el estado
+        showOfflineIndicator(isOffline);
+        
+        // Si estamos online, recargar datos del servidor
+        if (!isOffline) {
+            loadUserUrls();
+        }
+    }
+
+    // Mantener solo estos event listeners
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    // Enviar datos de autenticación al Service Worker para uso offline
+    function registerAuthWithServiceWorker() {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'STORE_AUTH_DATA',
+                    token: token
+                });
+                console.log('Token enviado al Service Worker');
+            }
+        }
+    }
+
+    // Verificar autorización y token al cargar la página
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log('Página cargada, verificando estado...');
+        
+        // Verificar token
+        const token = localStorage.getItem('token');
+        const username = localStorage.getItem('username');
+        
+        if (!token || !username) {
+            console.log('No hay sesión activa, redirigiendo a login');
+            window.location.href = '/login.html';
+            return;
+        }
+        
+        // Registrar token con el Service Worker
+        registerAuthWithServiceWorker();
+        
+        // Inicializar IndexedDB primero
+        try {
+            await initIndexedDB();
+            console.log('IndexedDB inicializada correctamente');
+            
+            // Verificar conexión y mostrar indicador si es necesario
+            updateOnlineStatus();
+            
+            // Cargar URLs (desde red o IndexedDB según estado conexión)
+            loadUserUrls();
+        } catch (error) {
+            console.error('Error inicializando IndexedDB:', error);
+        }
+    });
 </script>
 </body>
 </html>
-
 
 

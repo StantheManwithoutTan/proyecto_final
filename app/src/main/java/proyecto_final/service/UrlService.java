@@ -303,4 +303,57 @@ public class UrlService {
         
         return analytics;
     }
+
+    // Get all URLs (admin only)
+    public List<Map<String, Object>> getAllUrls() {
+        List<Map<String, Object>> urls = new ArrayList<>();
+        FindIterable<Document> docs = urlsCollection.find();
+        
+        for (Document doc : docs) {
+            Map<String, Object> url = new HashMap<>();
+            url.put("shortCode", doc.getString("shortCode"));
+            url.put("originalUrl", doc.getString("originalUrl"));
+            url.put("createdBy", doc.getString("createdBy"));
+            url.put("createdAt", doc.getDate("createdAt"));
+            url.put("accessCount", doc.getInteger("accessCount", 0));
+            url.put("isAnonymous", doc.getBoolean("isAnonymous", false));
+            
+            // For anonymous URLs, add sessionId
+            if (doc.getBoolean("isAnonymous", false)) {
+                url.put("sessionId", doc.getString("sessionId"));
+            }
+            
+            urls.add(url);
+        }
+        
+        return urls;
+    }
+
+    // Add this method to UrlService.java
+    public boolean syncBatchOperations(List<Map<String, Object>> operations, String username) {
+        try {
+            for (Map<String, Object> operation : operations) {
+                String operationType = (String) operation.get("type");
+                
+                switch (operationType) {
+                    case "create":
+                        Map<String, Object> urlData = (Map<String, Object>) operation.get("data");
+                        createShortUrl((String) urlData.get("originalUrl"), username);
+                        break;
+                        
+                    case "delete":
+                        String shortCode = (String) operation.get("shortCode");
+                        deleteUrl(shortCode, username);
+                        break;
+                        
+                    // Add more operations as needed
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            System.err.println("Error synchronizing operations: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
 }

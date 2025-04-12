@@ -82,6 +82,8 @@ public class App {
         app.post("/api/admin/promote", handlePromote);
         app.get("/api/admin/users", handleGetUsers);
         app.delete("/api/admin/users/username", handleDeleteUser);
+        app.get("/api/admin/urls", handleGetAllUrls);
+        app.delete("/api/admin/urls/{shortCode}", handleDeleteAnyUrl);
         
         // URL Shortener API endpoints
         app.post("/api/urls/shorten", handleShortenUrl);
@@ -96,6 +98,9 @@ public class App {
         app.post("/api/urls/anonymous/shorten", handleShortenUrlAnonymous);
         app.get("/api/urls/anonymous/session", handleGetSessionUrls);
         app.get("/api/urls/anonymous/analytics/{shortCode}", handleGetAnonymousAnalytics);
+        
+        // Sync operations endpoint
+        app.post("/api/sync/urls", handleSyncOperations);
         
         // Add shutdown hook to close MongoDB connection
         Runtime.getRuntime().addShutdownHook(new Thread(MongoDBConfig::close));
@@ -216,6 +221,52 @@ public class App {
             ctx.json(Map.of("message", "User deleted successfully"));
         } else {
             ctx.status(400).json(Map.of("error", "Failed to delete user"));
+        }
+    };
+
+    private static Handler handleGetAllUrls = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        
+        // Verify admin role
+        User user = userService.getUser(username);
+        if (user == null || !user.isAdmin()) {
+            ctx.status(403).json(Map.of("error", "Forbidden - Admin access required"));
+            return;
+        }
+        
+        List<Map<String, Object>> urls = urlService.getAllUrls();
+        ctx.json(urls);
+    };
+
+    private static Handler handleDeleteAnyUrl = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        String shortCode = ctx.pathParam("shortCode");
+        
+        // Verify admin role
+        User user = userService.getUser(username);
+        if (user == null || !user.isAdmin()) {
+            ctx.status(403).json(Map.of("error", "Forbidden - Admin access required"));
+            return;
+        }
+        
+        boolean deleted = urlService.deleteAnyUrl(shortCode);
+        
+        if (deleted) {
+            ctx.json(Map.of("message", "URL deleted successfully"));
+        } else {
+            ctx.status(404).json(Map.of("error", "URL not found"));
         }
     };
 
@@ -560,6 +611,25 @@ public class App {
         } catch (Exception e) {
             System.err.println("Error generating QR code for " + shortCode + ": " + e.getMessage());
             ctx.status(500).json(Map.of("error", "Failed to generate QR code"));
+        }
+    };
+
+    private static Handler handleSyncOperations = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        List<Map<String, Object>> operations = ctx.bodyAsClass(List.class);
+        
+        boolean success = urlService.syncBatchOperations(operations, username);
+        
+        if (success) {
+            ctx.json(Map.of("success", true, "message", "Operaciones sincronizadas correctamente"));
+        } else {
+            ctx.status(500).json(Map.of("success", false, "error", "Error sincronizando operaciones"));
         }
     };
 }

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/style.css">
     <style>
         .preview-cell {
-            width: 200px; /* Aumentar de 100px a 200px */
+            width: 100px;
         }
         
         .microlink-preview {
@@ -16,7 +16,7 @@
         }
         
         .microlink-card {
-            width: 100%; /* Cambiar de 50% a 100% para llenar la celda */
+            width: 50%;
             border-radius: 6px;
             overflow: hidden;
             font-family: inherit;
@@ -275,8 +275,34 @@
         document.getElementById('admin-link').style.display = 'block';
         document.getElementById('admin-all-urls-section').style.display = 'block';
         
-        // Ocultar sección de URLs personales para administradores
-        document.querySelector('.row.mt-4:nth-of-type(3)').style.display = 'none';
+        // Load all URLs function
+        async function loadAllUrls() {
+            try {
+                const response = await fetch('/api/admin/urls', {
+                    headers: {
+                        'Authorization': token
+                    }
+                });
+                
+                if (response.ok) {
+                    const urls = await response.json();
+                    const urlsList = document.getElementById('allUrlsList');
+                    urlsList.innerHTML = '';
+                    
+                    if (urls.length === 0) {
+                        urlsList.innerHTML = '<tr><td colspan="6" class="text-center">No hay URLs acortadas en el sistema</td></tr>';
+                        return;
+                    }
+                    
+                    urls.forEach(url => {
+                        // Código similar al de loadUserUrls pero con columna adicional para el usuario creador
+                        // y sin restricción para el botón eliminar
+                    });
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
         
         // Initialize admin functionality
         document.getElementById('refreshAllUrlsBtn').addEventListener('click', loadAllUrls);
@@ -294,11 +320,8 @@
     // Función para inicializar las vistas previas de Microlink
     async function cargarVistaPrevia(container, url) {
         try {
-            // Mostrar indicador de carga
-            container.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border spinner-border-sm"></div></div>';
-            
             const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}`;
-            const response = await fetchWithTimeout(apiUrl, {}, 8000); // 8 segundos de timeout
+            const response = await fetch(apiUrl);
             
             if (response.ok) {
                 const data = await response.json();
@@ -316,10 +339,10 @@
                     }
                     
                     html += `
-                        <div class="card-body" style="padding: 0.5rem;">
-                            <h6 class="card-title" style="font-size: 0.9rem; margin-bottom: 0.25rem;">${data.data.title || url}</h6>
-                            ${data.data.description ? `<p class="card-text" style="font-size: 0.8rem;">${truncateUrl(data.data.description, 80)}</p>` : ''}
-                            <p class="card-text"><small class="text-muted" style="font-size: 0.75rem;">${new URL(url).hostname}</small></p>
+                        <div class="card-body">
+                            <h5 class="card-title">${data.data.title || url}</h5>
+                            ${data.data.description ? `<p class="card-text">${data.data.description}</p>` : ''}
+                            <p class="card-text"><small class="text-muted">${new URL(url).hostname}</small></p>
                         </div>
                     `;
                     
@@ -327,14 +350,12 @@
                     container.innerHTML = '';
                     container.appendChild(card);
                 } else {
-                    container.innerHTML = '<div class="alert alert-warning p-1 text-center" style="font-size: 0.8rem;">No se pudo generar vista previa</div>';
+                    container.innerHTML = '<div class="alert alert-warning">No se pudo generar vista previa</div>';
                 }
-            } else {
-                throw new Error(`Error ${response.status}`);
             }
         } catch (error) {
             console.error('Error obteniendo vista previa:', error);
-            container.innerHTML = '<div class="alert alert-warning p-1 text-center" style="font-size: 0.8rem;">Error de vista previa</div>';
+            container.innerHTML = '<div class="alert alert-warning">Error de vista previa</div>';
         }
     }
 
@@ -793,33 +814,6 @@
         } catch (error) {
             console.error('Error:', error);
             alert('Error al comunicarse con el servidor');
-        }
-    }
-
-    // Delete any URL (admin only)
-    async function deleteAnyUrl(shortCode) {
-        if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada? Esta acción es irreversible.')) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/api/admin/urls/${shortCode}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': token
-                }
-            });
-            
-            if (response.ok) {
-                alert('URL eliminada correctamente');
-                loadAllUrls(); // Reload admin URLs list
-            } else {
-                const errorData = await response.json();
-                alert('Error al eliminar la URL: ' + (errorData.error || response.status));
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('Error al comunicarse con el servidor: ' + error.message);
         }
     }
 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home - URL Cortador</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
     <style>
         .preview-cell {
             width: 200px; /* Aumentar de 100px a 200px */
@@ -429,94 +430,158 @@
 
     // Load user's shortened URLs
     async function loadUserUrls() {
+        const token = localStorage.getItem('token'); // Or however you store the auth token
+        const urlListBody = document.getElementById('urlList'); // Assuming <tbody> element id="urlList"
+        const offlineIndicator = document.getElementById('offlineIndicator'); // Add an element for this message
+
+        if (!urlListBody) {
+            console.error("Element with ID 'urlList' not found.");
+            return;
+        }
+         if (!offlineIndicator) {
+            console.warn("Element with ID 'offlineIndicator' not found. Creating one.");
+            // Optionally create the indicator dynamically if it doesn't exist
+            const container = document.querySelector('.container'); // Adjust selector if needed
+            if (container) {
+                const indicatorDiv = document.createElement('div');
+                indicatorDiv.id = 'offlineIndicator';
+                indicatorDiv.style.display = 'none'; // Hide initially
+                indicatorDiv.className = 'alert alert-warning mt-3';
+                container.insertBefore(indicatorDiv, container.firstChild); // Add at the top
+                offlineIndicator = indicatorDiv;
+            }
+        }
+
+
+        urlListBody.innerHTML = '<tr><td colspan="7">Loading URLs...</td></tr>'; // Adjust colspan if needed
+        if(offlineIndicator) offlineIndicator.style.display = 'none'; // Hide indicator initially
+
+        if (!token) {
+            urlListBody.innerHTML = '<tr><td colspan="7">Error: Not logged in.</td></tr>';
+            // Redirect to login or show appropriate message
+            return;
+        }
+
         try {
             const response = await fetch('/api/urls/user', {
                 headers: {
-                    'Authorization': token
+                    'Authorization': token, // Send the token! Crucial for SW caching the correct response
+                    'Accept': 'application/json'
                 }
             });
-            
-            if (response.ok) {
-                const urls = await response.json();
-                const urlsList = document.getElementById('urlsList');
-                urlsList.innerHTML = '';
-                
-                if (urls.length === 0) {
-                    urlsList.innerHTML = '<tr><td colspan="4" class="text-center">No has acortado ninguna URL todavía</td></tr>';
-                    return;
-                }
-                
-                urls.forEach(url => {
-                    const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
-                    const row = document.createElement('tr');
-                    
-                    // Preview cell with Microlink card
-                    const previewCell = document.createElement('td');
-                    previewCell.className = 'preview-cell';
-                    
-                    // Create link preview container
-                    const previewContainer = document.createElement('div');
-                    previewContainer.className = 'microlink-preview';
-                    previewContainer.dataset.url = url.originalUrl;
-                    previewCell.appendChild(previewContainer);
-                    row.appendChild(previewCell);
-            
 
-                    // Original URL (truncated if too long)
-                    const originalCell = document.createElement('td');
-                    originalCell.title = url.originalUrl;
-                    originalCell.textContent = truncateUrl(url.originalUrl);
-                    row.appendChild(originalCell);
-                    
-                    // Short URL with copy button
-                    const shortUrlCell = document.createElement('td');
-                    const shortUrlLink = document.createElement('a');
-                    shortUrlLink.href = shortUrl;
-                    shortUrlLink.textContent = shortUrl;
-                    shortUrlLink.target = '_blank';
-                    shortUrlCell.appendChild(shortUrlLink);
-                    row.appendChild(shortUrlCell);
-                    
-                    // Access count
-                    const accessCell = document.createElement('td');
-                    accessCell.textContent = url.accessCount || 0;
-                    row.appendChild(accessCell);
-                    
-                    // Actions
-                    const actionsCell = document.createElement('td');
-                    const analyticsBtn = document.createElement('button');
-                    analyticsBtn.className = 'btn btn-sm btn-info me-2';
-                    analyticsBtn.textContent = 'Ver Análisis';
-                    analyticsBtn.onclick = () => showAnalytics(url.shortCode);
-                    actionsCell.appendChild(analyticsBtn);
+            // Check if the response came from the service worker's cache
+            // Note: This check isn't perfectly reliable across all browsers/scenarios
+            const isFromCache = response.headers.get('X-Served-From') === 'ServiceWorker-Cache'; // Custom header (optional) OR check response.url if SW modifies it
 
-                    // Solo mostrar el botón eliminar para administradores
-                    if (isAdmin) {
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.className = 'btn btn-sm btn-danger';
-                        deleteBtn.textContent = 'Eliminar';
-                        deleteBtn.onclick = () => deleteUrl(url.shortCode);
-                        actionsCell.appendChild(deleteBtn);
-                    }
-
-                    row.appendChild(actionsCell);
-                    urlsList.appendChild(row);
-
-                    // Initialize preview
-                    const previewElement = row.querySelector('.microlink-preview');
-                    if (previewElement) {
-                        setTimeout(() => {
-                            cargarVistaPrevia(previewElement, normalizarURL(url.originalUrl));
-                        }, 100);
-                    }
-                });
-            } else {
-                console.error('Error loading URLs');
+            if (!response.ok) {
+                // If network failed, the SW might have returned a cached response (if available)
+                // Or the SW might have let the browser handle the error (response is an error)
+                // We rely on the catch block for definitive offline handling
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
+
+            const urls = await response.json();
+            displayUrls(urls, false); // Display data, indicate it's fresh (not offline)
+
         } catch (error) {
-            console.error('Error:', error);
+            console.warn('Error fetching user URLs from network:', error);
+            urlListBody.innerHTML = '<tr><td colspan="7">Network error. Attempting to load from cache...</td></tr>';
+
+            // Network failed, explicitly try to get from cache via Service Worker's cache storage
+            try {
+                const cache = await caches.open(CACHE_NAME);
+                // Construct the request exactly as the SW would have cached it (including headers)
+                const cacheRequest = new Request('/api/urls/user', {
+                     headers: { 'Authorization': token, 'Accept': 'application/json' }
+                });
+                const cachedResponse = await cache.match(cacheRequest);
+
+                if (cachedResponse) {
+                    console.log('Successfully loaded URLs from cache.');
+                    const urls = await cachedResponse.json();
+                    displayUrls(urls, true); // Display data, indicate it's offline/cached
+                } else {
+                    console.log('URLs not found in cache.');
+                    urlListBody.innerHTML = '<tr><td colspan="7">Could not load URLs. You appear to be offline and no cached data is available.</td></tr>';
+                     if(offlineIndicator) {
+                        offlineIndicator.textContent = 'Offline: Could not load fresh data and no cached data found.';
+                        offlineIndicator.style.display = 'block';
+                     }
+                }
+            } catch (cacheError) {
+                console.error('Error accessing cache:', cacheError);
+                urlListBody.innerHTML = '<tr><td colspan="7">Error loading URLs. Could not access cache.</td></tr>';
+                 if(offlineIndicator) {
+                     offlineIndicator.textContent = 'Error accessing offline data.';
+                     offlineIndicator.style.display = 'block';
+                 }
+            }
         }
     }
+
+    function displayUrls(urls, isOffline) {
+        const urlListBody = document.getElementById('urlList');
+        const offlineIndicator = document.getElementById('offlineIndicator');
+        urlListBody.innerHTML = ''; // Clear loading/previous content
+
+        if (isOffline && offlineIndicator) {
+            offlineIndicator.textContent = 'Showing cached data. You might be offline.';
+            offlineIndicator.style.display = 'block';
+        } else if (offlineIndicator) {
+             offlineIndicator.style.display = 'none';
+        }
+
+
+        if (!urls || urls.length === 0) {
+            urlListBody.innerHTML = '<tr><td colspan="7">No URLs found.</td></tr>'; // Adjust colspan
+            return;
+        }
+
+        // Your existing logic to populate the table rows from the 'urls' array
+        urls.forEach(url => {
+            const row = document.createElement('tr');
+            // Adapt this to match your actual table structure and data fields
+            row.innerHTML = `
+                <td><a href="/s/${url.shortCode}" target="_blank">${url.shortCode}</a></td>
+                <td class="text-truncate" style="max-width: 250px;"><a href="${url.originalUrl}" target="_blank" title="${url.originalUrl}">${url.originalUrl}</a></td>
+                <td>${new Date(url.createdAt).toLocaleString()}</td>
+                <td>${url.accessCount || 0}</td>
+                <td class="preview-cell">
+                    <!-- Microlink or other preview -->
+                    <a href="${url.originalUrl}" class="microlink" data-size="small" data-media="logo"></a>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="showAnalytics('${url.shortCode}')">Stats</button>
+                    <button class="btn btn-sm btn-secondary" onclick="showQrCode('${url.shortCode}')">QR</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteUrl('${url.shortCode}')">Delete</button>
+                </td>
+            `;
+            urlListBody.appendChild(row);
+        });
+
+        // Re-initialize Microlink if you are using it dynamically
+        if (window.microlink) {
+            window.microlink('.microlink');
+        }
+    }
+
+    // Make sure loadUserUrls is called when the page loads and user is potentially logged in
+    window.addEventListener('load', () => {
+        // Check if user is logged in before loading URLs
+        if (localStorage.getItem('token')) { // Adjust based on how you check login status
+             loadUserUrls();
+        } else {
+            // Handle not logged in state if necessary
+            console.log("User not logged in.");
+            // Maybe redirect to login page
+        }
+    });
+
+    // --- Add placeholder functions if they don't exist ---
+    function showAnalytics(shortCode) { console.log("Show Analytics for:", shortCode); /* Implement */ }
+    function showQrCode(shortCode) { console.log("Show QR Code for:", shortCode); /* Implement */ }
+    function deleteUrl(shortCode) { console.log("Delete URL:", shortCode); /* Implement */ }
 
     // Function to show analytics
     async function showAnalytics(shortCode) {
@@ -890,6 +955,27 @@
             console.error('Error:', error);
         }
     }
+
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                })
+                .catch(error => {
+                    console.log('ServiceWorker registration failed: ', error);
+                });
+        });
+    }
+
+    // --- Your existing JavaScript for url_home.html ---
+    // Make sure to modify the function that fetches user URLs (see step 3)
+    // Example:
+    // async function loadUserUrls() { ... }
+    // function displayUrls(urls, isOffline) { ... }
+    // window.addEventListener('load', loadUserUrls);
+
 </script>
 </body>
 </html>

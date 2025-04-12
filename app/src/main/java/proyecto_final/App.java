@@ -75,6 +75,8 @@ public class App {
         app.post("/api/admin/promote", handlePromote);
         app.get("/api/admin/users", handleGetUsers);
         app.delete("/api/admin/users/username", handleDeleteUser);
+        app.get("/api/admin/urls", handleGetAllUrls);
+        app.delete("/api/admin/urls/{shortCode}", handleDeleteAnyUrl);
         
         // URL Shortener API endpoints
         app.post("/api/urls/shorten", handleShortenUrl);
@@ -208,6 +210,52 @@ public class App {
             ctx.json(Map.of("message", "User deleted successfully"));
         } else {
             ctx.status(400).json(Map.of("error", "Failed to delete user"));
+        }
+    };
+
+    private static Handler handleGetAllUrls = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        
+        // Verify admin role
+        User user = userService.getUser(username);
+        if (user == null || !user.isAdmin()) {
+            ctx.status(403).json(Map.of("error", "Forbidden - Admin access required"));
+            return;
+        }
+        
+        List<Map<String, Object>> urls = urlService.getAllUrls();
+        ctx.json(urls);
+    };
+
+    private static Handler handleDeleteAnyUrl = ctx -> {
+        String token = ctx.header("Authorization");
+        if (token == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized"));
+            return;
+        }
+        
+        String username = token.split("-")[0];
+        String shortCode = ctx.pathParam("shortCode");
+        
+        // Verify admin role
+        User user = userService.getUser(username);
+        if (user == null || !user.isAdmin()) {
+            ctx.status(403).json(Map.of("error", "Forbidden - Admin access required"));
+            return;
+        }
+        
+        boolean deleted = urlService.deleteAnyUrl(shortCode);
+        
+        if (deleted) {
+            ctx.json(Map.of("message", "URL deleted successfully"));
+        } else {
+            ctx.status(404).json(Map.of("error", "URL not found"));
         }
     };
 

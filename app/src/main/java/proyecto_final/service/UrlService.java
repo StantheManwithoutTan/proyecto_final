@@ -303,4 +303,29 @@ public class UrlService {
         
         return analytics;
     }
+
+    // Get all URLs (admin only)
+    public List<Map<String, Object>> getAllUrls() {
+        List<Map<String, Object>> urls = new ArrayList<>();
+        FindIterable<Document> docs = urlsCollection.find();
+        
+        for (Document doc : docs) {
+            Map<String, Object> url = new HashMap<>();
+            url.put("shortCode", doc.getString("shortCode"));
+            url.put("originalUrl", doc.getString("originalUrl"));
+            url.put("createdBy", doc.getString("createdBy"));
+            url.put("createdAt", doc.getDate("createdAt"));
+            url.put("accessCount", doc.getInteger("accessCount", 0));
+            url.put("isAnonymous", doc.getBoolean("isAnonymous", false));
+            
+            // For anonymous URLs, add sessionId
+            if (doc.getBoolean("isAnonymous", false)) {
+                url.put("sessionId", doc.getString("sessionId"));
+            }
+            
+            urls.add(url);
+        }
+        
+        return urls;
+    }
 }

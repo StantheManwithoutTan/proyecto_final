@@ -7,7 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .preview-cell {
-            width: 100px;
+            width: 200px; /* Aumentar de 100px a 200px */
         }
         
         .microlink-preview {
@@ -15,7 +15,7 @@
         }
         
         .microlink-card {
-            width: 50%;
+            width: 100%; /* Cambiar de 50% a 100% para llenar la celda */
             border-radius: 6px;
             overflow: hidden;
             font-family: inherit;
@@ -274,34 +274,8 @@
         document.getElementById('admin-link').style.display = 'block';
         document.getElementById('admin-all-urls-section').style.display = 'block';
         
-        // Load all URLs function
-        async function loadAllUrls() {
-            try {
-                const response = await fetch('/api/admin/urls', {
-                    headers: {
-                        'Authorization': token
-                    }
-                });
-                
-                if (response.ok) {
-                    const urls = await response.json();
-                    const urlsList = document.getElementById('allUrlsList');
-                    urlsList.innerHTML = '';
-                    
-                    if (urls.length === 0) {
-                        urlsList.innerHTML = '<tr><td colspan="6" class="text-center">No hay URLs acortadas en el sistema</td></tr>';
-                        return;
-                    }
-                    
-                    urls.forEach(url => {
-                        // Código similar al de loadUserUrls pero con columna adicional para el usuario creador
-                        // y sin restricción para el botón eliminar
-                    });
-                }
-            } catch (error) {
-                console.error('Error:', error);
-            }
-        }
+        // Ocultar sección de URLs personales para administradores
+        document.querySelector('.row.mt-4:nth-of-type(3)').style.display = 'none';
         
         // Initialize admin functionality
         document.getElementById('refreshAllUrlsBtn').addEventListener('click', loadAllUrls);
@@ -319,8 +293,11 @@
     // Función para inicializar las vistas previas de Microlink
     async function cargarVistaPrevia(container, url) {
         try {
+            // Mostrar indicador de carga
+            container.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border spinner-border-sm"></div></div>';
+            
             const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}`;
-            const response = await fetch(apiUrl);
+            const response = await fetchWithTimeout(apiUrl, {}, 8000); // 8 segundos de timeout
             
             if (response.ok) {
                 const data = await response.json();
@@ -338,10 +315,10 @@
                     }
                     
                     html += `
-                        <div class="card-body">
-                            <h5 class="card-title">${data.data.title || url}</h5>
-                            ${data.data.description ? `<p class="card-text">${data.data.description}</p>` : ''}
-                            <p class="card-text"><small class="text-muted">${new URL(url).hostname}</small></p>
+                        <div class="card-body" style="padding: 0.5rem;">
+                            <h6 class="card-title" style="font-size: 0.9rem; margin-bottom: 0.25rem;">${data.data.title || url}</h6>
+                            ${data.data.description ? `<p class="card-text" style="font-size: 0.8rem;">${truncateUrl(data.data.description, 80)}</p>` : ''}
+                            <p class="card-text"><small class="text-muted" style="font-size: 0.75rem;">${new URL(url).hostname}</small></p>
                         </div>
                     `;
                     
@@ -349,12 +326,14 @@
                     container.innerHTML = '';
                     container.appendChild(card);
                 } else {
-                    container.innerHTML = '<div class="alert alert-warning">No se pudo generar vista previa</div>';
+                    container.innerHTML = '<div class="alert alert-warning p-1 text-center" style="font-size: 0.8rem;">No se pudo generar vista previa</div>';
                 }
+            } else {
+                throw new Error(`Error ${response.status}`);
             }
         } catch (error) {
             console.error('Error obteniendo vista previa:', error);
-            container.innerHTML = '<div class="alert alert-warning">Error de vista previa</div>';
+            container.innerHTML = '<div class="alert alert-warning p-1 text-center" style="font-size: 0.8rem;">Error de vista previa</div>';
         }
     }
 
@@ -752,6 +731,33 @@
         }
     }
 
+    // Delete any URL (admin only)
+    async function deleteAnyUrl(shortCode) {
+        if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada? Esta acción es irreversible.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/admin/urls/${shortCode}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': token
+                }
+            });
+            
+            if (response.ok) {
+                alert('URL eliminada correctamente');
+                loadAllUrls(); // Reload admin URLs list
+            } else {
+                const errorData = await response.json();
+                alert('Error al eliminar la URL: ' + (errorData.error || response.status));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error al comunicarse con el servidor: ' + error.message);
+        }
+    }
+
     // Helper function to truncate long URLs
     function truncateUrl(url, maxLength = 40) {
         if (url.length <= maxLength) return url;
@@ -791,6 +797,99 @@
             console.log('Bootstrap cargado correctamente');
         }
     });
+
+    // Mover esta función fuera del bloque if (isAdmin)
+    async function loadAllUrls() {
+        try {
+            const response = await fetch('/api/admin/urls', {
+                headers: {
+                    'Authorization': token
+                }
+            });
+            
+            if (response.ok) {
+                const urls = await response.json();
+                const urlsList = document.getElementById('allUrlsList');
+                urlsList.innerHTML = '';
+                
+                if (urls.length === 0) {
+                    urlsList.innerHTML = '<tr><td colspan="6" class="text-center">No hay URLs acortadas en el sistema</td></tr>';
+                    return;
+                }
+                
+                urls.forEach(url => {
+                    const shortUrl = `${window.location.origin}/s/${url.shortCode}`;
+                    const row = document.createElement('tr');
+                    
+                    // Preview cell
+                    const previewCell = document.createElement('td');
+                    previewCell.className = 'preview-cell';
+                    
+                    const previewContainer = document.createElement('div');
+                    previewContainer.className = 'microlink-preview';
+                    previewContainer.dataset.url = url.originalUrl;
+                    previewCell.appendChild(previewContainer);
+                    row.appendChild(previewCell);
+                    
+                    // Creator username cell (new column)
+                    const creatorCell = document.createElement('td');
+                    creatorCell.textContent = url.createdBy || 'anónimo';
+                    creatorCell.className = url.createdBy === 'anonymous' ? 'text-muted' : '';
+                    row.appendChild(creatorCell);
+                    
+                    // Original URL
+                    const originalCell = document.createElement('td');
+                    originalCell.title = url.originalUrl;
+                    originalCell.textContent = truncateUrl(url.originalUrl);
+                    row.appendChild(originalCell);
+                    
+                    // Short URL
+                    const shortUrlCell = document.createElement('td');
+                    const shortUrlLink = document.createElement('a');
+                    shortUrlLink.href = shortUrl;
+                    shortUrlLink.textContent = shortUrl;
+                    shortUrlLink.target = '_blank';
+                    shortUrlCell.appendChild(shortUrlLink);
+                    row.appendChild(shortUrlCell);
+                    
+                    // Access count
+                    const accessCell = document.createElement('td');
+                    accessCell.textContent = url.accessCount || 0;
+                    row.appendChild(accessCell);
+                    
+                    // Actions
+                    const actionsCell = document.createElement('td');
+                    
+                    // Analytics button
+                    const analyticsBtn = document.createElement('button');
+                    analyticsBtn.className = 'btn btn-sm btn-info me-2';
+                    analyticsBtn.textContent = 'Ver Análisis';
+                    analyticsBtn.onclick = () => showAnalytics(url.shortCode);
+                    actionsCell.appendChild(analyticsBtn);
+                    
+                    // Delete button - available for all URLs
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn btn-sm btn-danger';
+                    deleteBtn.textContent = 'Eliminar';
+                    deleteBtn.onclick = () => deleteAnyUrl(url.shortCode);
+                    actionsCell.appendChild(deleteBtn);
+                    
+                    row.appendChild(actionsCell);
+                    urlsList.appendChild(row);
+                    
+                    // Initialize preview
+                    const previewElement = row.querySelector('.microlink-preview');
+                    if (previewElement) {
+                        setTimeout(() => {
+                            cargarVistaPrevia(previewElement, normalizarURL(url.originalUrl));
+                        }, 100);
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
 </script>
 </body>
 </html>

@@ -36,7 +36,29 @@
                 min-width: 100px;
             }
         }
+
+        #qrCodeContainer {
+            display: flex;
+            justify-content: center;
+            margin: 15px 0;
+        }
+
+        #qrCodeContainer img, 
+        #qrCodeContainer canvas {
+            max-width: 200px;
+            max-height: 200px;
+            border: 1px solid #ddd;
+            padding: 5px;
+            background: white;
+        }
+
+        #downloadQrBtn {
+            margin-top: 5px;
+        }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@microlink/sdk@latest/dist/microlink.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanilla-qr@1.0.0/dist/vanilla-qr.min.js"></script>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
@@ -146,8 +168,17 @@
                                     <div class="modal-body">
                                         <h6 class="mb-3">URL: <span id="analyticsUrl"></span></h6>
                                         
-                                        <h6>Resumen de Accesos</h6>
-                                        <p>Total de visitas: <strong id="totalVisits"></strong></p>
+                                        <div class="row mb-4">
+                                            <div class="col-md-6">
+                                                <h6>Resumen de Accesos</h6>
+                                                <p>Total de visitas: <strong id="totalVisits"></strong></p>
+                                            </div>
+                                            <div class="col-md-6 text-center">
+                                                <h6>Código QR para la URL acortada</h6>
+                                                <div id="qrCodeContainer" class="mb-2"></div>
+                                                <button id="downloadQrBtn" class="btn btn-sm btn-primary">Descargar QR</button>
+                                            </div>
+                                        </div>
                                         
                                         <h6>Historial de Accesos por Hora</h6>
                                         <div id="accessTimeChart" class="text-center mb-4">
@@ -335,6 +366,26 @@
         return url;
     }
 
+    // Función de ayuda para fetch con timeout
+    async function fetchWithTimeout(url, options, timeout = 5000) {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        
+        options.signal = controller.signal;
+        
+        try {
+            const response = await fetch(url, options);
+            clearTimeout(id);
+            return response;
+        } catch (error) {
+            clearTimeout(id);
+            if (error.name === 'AbortError') {
+                throw new Error('Tiempo de espera agotado');
+            }
+            throw error;
+        }
+    }
+
     // URL Shortener functionality
     document.getElementById('urlShortenerForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -490,38 +541,143 @@
 
     // Function to show analytics
     async function showAnalytics(shortCode) {
+        // Mostrar indicador de carga inmediatamente
+        const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
+        document.getElementById('analyticsUrl').textContent = "Cargando...";
+        document.getElementById('totalVisits').textContent = "...";
+        document.getElementById('accessList').innerHTML = '<tr><td colspan="5" class="text-center">Cargando datos...</td></tr>';
+        document.getElementById('accessTimeChart').innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border" role="status"></div></div>';
+        document.getElementById('qrCodeContainer').innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border" role="status"></div></div>';
+        
+        // Mostrar modal inmediatamente para dar feedback
+        analyticsModal.show();
+        
         try {
-            const response = await fetch(`/api/urls/analytics/${shortCode}`, {
+            console.log('Solicitando analíticas para:', shortCode);
+            const response = await fetchWithTimeout(`/api/urls/analytics/${shortCode}`, {
                 headers: {
                     'Authorization': token
                 }
-            });
+            }, 8000); // 8 segundos de timeout
             
             if (response.ok) {
                 const data = await response.json();
+                console.log('Datos recibidos:', data);
                 
                 // Set analytics data in modal
                 document.getElementById('analyticsUrl').textContent = data.originalUrl;
-                document.getElementById('totalVisits').textContent = data.accessCount;
+                document.getElementById('totalVisits').textContent = data.accessCount || 0;
                 
-                // Usar fetch para cargar la gráfica correctamente con el token en el header
+                // Generar el código QR para la URL acortada
+                const shortUrl = `${window.location.origin}/s/${shortCode}`;
+                const qrContainer = document.getElementById('qrCodeContainer');
+                qrContainer.innerHTML = ''; // Limpiar contenedor
+
+                // Si VanillaQR no está disponible, usa un QR alternativo o muestra un mensaje
+                if (typeof VanillaQR === 'undefined') {
+                    console.error('VanillaQR no disponible, usando alternativa');
+                    qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shortUrl)}" alt="QR Code">`;
+                } else {
+                    // Crear el código QR usando VanillaQR
+                    const qr = new VanillaQR({
+                        url: shortUrl,
+                        size: 200,
+                        colorLight: "#ffffff",
+                        colorDark: "#000000",
+                        toTable: false,
+                        ecclevel: 1,  // Nivel de corrección de errores (0-3)
+                        borderSize: 4
+                    });
+
+                    // Añadir el código QR al contenedor
+                    qrContainer.appendChild(qr.domElement);
+
+                    // Configurar el botón de descarga
+                    document.getElementById('downloadQrBtn').onclick = function() {
+                        // Crear un enlace temporal para descargar
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const size = qr.size;
+                        
+                        canvas.width = size;
+                        canvas.height = size;
+                        
+                        // Dibujar el QR en el canvas
+                        ctx.drawImage(qr.domElement, 0, 0, size, size);
+                        
+                        // Convertir el canvas a una URL de datos
+                        const dataUrl = canvas.toDataURL('image/png');
+                        
+                        // Crear un enlace para descargar
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = dataUrl;
+                        downloadLink.download = `qr-${shortCode}.png`;
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                    };
+                }
+                
+                // Cargar la gráfica de accesos con mejor manejo de errores y tiempo de espera
                 try {
-                    const chartResponse = await fetch(`/api/urls/chart/${shortCode}`, {
+                    // Mostrar indicador de carga más descriptivo
+                    document.getElementById('accessTimeChart').innerHTML = 
+                        '<div class="text-center"><div class="spinner-border" role="status"></div><p class="mt-2">Generando gráfica de accesos...</p></div>';
+                    
+                    console.log('Solicitando gráfica para:', shortCode);
+                    
+                    // Usar un tiempo de espera más largo específicamente para la gráfica
+                    const chartResponse = await fetchWithTimeout(`/api/urls/chart/${shortCode}`, {
                         headers: {
                             'Authorization': token
                         }
-                    });
+                    }, 15000); // 15 segundos de timeout para la gráfica
+                    
+                    console.log('Respuesta de gráfica:', chartResponse.status);
                     
                     if (chartResponse.ok) {
                         const blob = await chartResponse.blob();
+                        
+                        // Verificar el tamaño del blob - si es muy pequeño, probablemente es un error
+                        if (blob.size < 100) {
+                            throw new Error('La imagen de la gráfica es demasiado pequeña');
+                        }
+                        
                         const imageUrl = URL.createObjectURL(blob);
-                        document.getElementById('accessChartImg').src = imageUrl;
-                    } else {
+                        
+                        // CAMBIO AQUÍ: Crear un nuevo elemento img en lugar de intentar acceder a uno existente
+                        const img = document.createElement('img');
+                        img.id = 'accessChartImg';
+                        img.className = 'img-fluid';
+                        img.style.maxWidth = '100%';
+                        
+                        // Mostrar mensaje mientras la imagen carga
                         document.getElementById('accessTimeChart').innerHTML = 
-                            '<div class="alert alert-warning">No se pudo cargar la gráfica</div>';
+                            '<div class="text-center"><div class="spinner-border" role="status"></div><p>Cargando imagen...</p></div>';
+                        
+                        // Reemplazar con la imagen cuando esté lista
+                        img.onload = function() {
+                            document.getElementById('accessTimeChart').innerHTML = '';
+                            document.getElementById('accessTimeChart').appendChild(img);
+                        };
+                        
+                        // Manejar errores de carga de imagen
+                        img.onerror = function() {
+                            document.getElementById('accessTimeChart').innerHTML = 
+                                '<div class="alert alert-warning">Error al cargar la imagen. <button class="btn btn-sm btn-link" onclick="retryLoadChart(\'' + shortCode + '\')">Reintentar</button></div>';
+                        };
+                        
+                        // Asignar la fuente al final para iniciar la carga
+                        img.src = imageUrl;
+                    } else {
+                        // Mostrar mensaje de error con opción de reintento
+                        document.getElementById('accessTimeChart').innerHTML = 
+                            '<div class="alert alert-warning">No se pudo generar la gráfica. <button class="btn btn-sm btn-link" onclick="retryLoadChart(\'' + shortCode + '\')">Reintentar</button></div>';
                     }
                 } catch (chartError) {
                     console.error('Error al cargar gráfica:', chartError);
+                    document.getElementById('accessTimeChart').innerHTML = 
+                        '<div class="alert alert-danger">Error: ' + chartError.message + ' <button class="btn btn-sm btn-link" onclick="retryLoadChart(\'' + shortCode + '\')">Reintentar</button></div>';
                 }
                 
                 // Generate access list
@@ -559,7 +715,7 @@
                 // createOsChart(data.operatingSystems);
                 
                 // Show modal
-                const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
+                //const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
                 analyticsModal.show();
             } else {
                 alert('Error al cargar análisis');
@@ -626,10 +782,18 @@
         }
     });
 
-    
+    // Al inicio del script principal, asegurar que Bootstrap está cargado
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof bootstrap === 'undefined') {
+            console.error('Bootstrap no cargado correctamente');
+            // Cargar Bootstrap manualmente o mostrar mensaje al usuario
+        } else {
+            console.log('Bootstrap cargado correctamente');
+        }
+    });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@microlink/sdk@latest/dist/microlink.min.js"></script>
 </body>
 </html>
+
 
 

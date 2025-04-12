@@ -330,20 +330,29 @@ public class App {
             }
         }
         
-        // Crear el gráfico de categoría
+        // Simplificación de la generación de gráficos
         CategoryChart chart = new CategoryChartBuilder()
-                .width(800)
-                .height(400)
+                .width(600)          // Reducir tamaño
+                .height(300)         // Reducir tamaño
                 .title("Accesos por Hora")
                 .xAxisTitle("Fecha y Hora")
-                .yAxisTitle("Número de Accesos")
+                .yAxisTitle("Accesos")
                 .build();
-        
-        // Personalizar el gráfico
+
+        // Personalizar el gráfico con configuración mínima
         chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
         chart.getStyler().setXAxisLabelRotation(45);
         chart.getStyler().setDatePattern("yyyy-MM-dd HH:mm");
-        
+        chart.getStyler().setChartBackgroundColor(java.awt.Color.WHITE);
+        chart.getStyler().setPlotBackgroundColor(java.awt.Color.WHITE);
+
+        // Limitar la cantidad de datos si hay demasiados
+        if (dates.size() > 20) {
+            // Tomar solo los últimos 20 puntos de datos
+            dates = dates.subList(dates.size() - 20, dates.size());
+            counts = counts.subList(counts.size() - 20, counts.size());
+        }
+
         // Añadir la serie de datos
         chart.addSeries("Accesos", dates, counts);
         

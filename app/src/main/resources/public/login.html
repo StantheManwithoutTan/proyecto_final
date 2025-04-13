@@ -46,19 +46,18 @@
             try {
                 const response = await fetch('/api/auth/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-                    localStorage.setItem('username', username);
+                    // Store the JWT token instead of the simple one
                     localStorage.setItem('token', data.token);
+                    // Still store username and isAdmin if needed for UI logic immediately after login
+                    localStorage.setItem('username', username);
                     localStorage.setItem('isAdmin', data.isAdmin);
-                    
-                    // Redirect based on user role
+
                     if (data.isAdmin === true) {
                         window.location.href = '/admin.html';
                     } else {
@@ -73,10 +72,17 @@
             }
         });
 
-        // Check if already logged in
+        // Check if already logged in (token exists)
         if (localStorage.getItem('token')) {
-            // Redirect to url_home.html if already logged in
-            window.location.href = '/url_home.html';
+            // Optional: Add a check here to see if the token is expired before redirecting
+            // For simplicity, we redirect if any token exists.
+            // A better approach might involve a quick API call to verify the token.
+            const isAdmin = localStorage.getItem('isAdmin') === 'true'; // Check stored admin status
+             if (isAdmin) {
+                 window.location.href = '/admin.html';
+             } else {
+                 window.location.href = '/url_home.html';
+             }
         }
 
         document.getElementById('guestBtn').addEventListener('click', function() {

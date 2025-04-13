@@ -15,6 +15,9 @@ import proyecto_final.service.UrlService;
 import proyecto_final.service.SessionService;
 import proyecto_final.model.ShortUrl;
 import proyecto_final.model.Session;
+import proyecto_final.service.JwtService; // Import JwtService
+import com.auth0.jwt.exceptions.JWTVerificationException; // Import exceptions
+import com.auth0.jwt.interfaces.DecodedJWT; // Import DecodedJWT
 
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +50,7 @@ public class App {
     private static UserService userService;
     private static UrlService urlService;
     private static SessionService sessionService;
+    private static JwtService jwtService; // Add JwtService instance
 
     public String getGreeting() {
         return "Hello World!";
@@ -64,6 +68,8 @@ public class App {
         
         // Initialize session service
         sessionService = SessionService.getInstance();
+        
+        jwtService = JwtService.getInstance(); // Initialize JwtService
         
         // Create and configure Javalin app
         Javalin app = Javalin.create(config -> {
@@ -126,12 +132,13 @@ public class App {
         
         // Check if password matches
         if (userService.validateCredentials(username, password)) {
+            // Generate JWT instead of simple token
+            String token = jwtService.generateToken(user);
+
             Map<String, Object> response = new HashMap<>();
-            String token = username + "-" + System.currentTimeMillis();
-            
-            response.put("token", token);
-            response.put("isAdmin", user.isAdmin());
-            
+            response.put("token", token); // Send JWT
+            response.put("isAdmin", user.isAdmin()); // Keep isAdmin for initial client setup
+
             System.out.println("User " + username + " logged in, isAdmin: " + user.isAdmin());
             ctx.json(response);
         } else {
@@ -177,23 +184,22 @@ public class App {
     };
     
     private static Handler handleGetUsers = ctx -> {
-        // Verificar que sea un administrador
-        String token = ctx.header("Authorization");
-        if (token == null) {
+        DecodedJWT decodedJWT = validateAuthHeader(ctx);
+        if (decodedJWT == null) {
             ctx.status(401).json(Map.of("error", "Unauthorized"));
             return;
         }
-        
-        // Extraer username del token
-        String adminUsername = token.split("-")[0];
-        User admin = userService.getUser(adminUsername);
-        
-        if (admin == null || !admin.isAdmin()) {
+
+        // Extract username AND check admin claim from token
+        String adminUsername = jwtService.getUsernameFromToken(decodedJWT);
+        boolean isAdmin = jwtService.isAdminFromToken(decodedJWT);
+
+        if (!isAdmin) { // Check claim from token
             ctx.status(403).json(Map.of("error", "Forbidden: Admin access required"));
             return;
         }
-        
-        // Convertir usuarios a un formato seguro para enviar (sin passwords)
+
+        // Convert users to a safe format (no passwords)
         Map<String, Map<String, Object>> usersInfo = new HashMap<>();
         userService.getAllUsers().forEach((username, user) -> {
             Map<String, Object> userInfo = new HashMap<>();
@@ -201,7 +207,7 @@ public class App {
             userInfo.put("isRootAdmin", user.isRootAdmin());
             usersInfo.put(username, userInfo);
         });
-        
+
         ctx.json(usersInfo);
     };
     
@@ -271,35 +277,30 @@ public class App {
     };
 
     private static Handler handleShortenUrl = ctx -> {
-        // Verify authentication
-        String token = ctx.header("Authorization");
-        if (token == null) {
-            ctx.status(401).json(Map.of("error", "Unauthorized"));
+        DecodedJWT decodedJWT = validateAuthHeader(ctx);
+        if (decodedJWT == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized - Invalid or missing token"));
             return;
         }
-        
-        String username = token.split("-")[0];
-        
+        String username = jwtService.getUsernameFromToken(decodedJWT);
+
         // Rate limit fix - only using the required parameters
         NaiveRateLimit.requestPerTimeUnit(ctx, 10, TimeUnit.MINUTES);
-        
-        // Obtener y validar URL
+
         Map<String, String> body = ctx.bodyAsClass(Map.class);
         String originalUrl = body.get("originalUrl");
-        
+
         if (originalUrl == null || originalUrl.isEmpty()) {
             ctx.status(400).json(Map.of("error", "URL is required"));
             return;
         }
-        
-        // Asegúrate de que la URL sea válida (esquema http o https)
+
         if (!Pattern.matches("^https?://.*", originalUrl)) {
             originalUrl = "http://" + originalUrl;
         }
-        
-        // Crear URL acortada
+
         ShortUrl shortUrl = urlService.createShortUrl(originalUrl, username);
-        
+
         ctx.json(Map.of(
             "shortCode", shortUrl.getShortCode(),
             "originalUrl", shortUrl.getOriginalUrl()
@@ -307,15 +308,15 @@ public class App {
     };
 
     private static Handler handleGetUserUrls = ctx -> {
-        String token = ctx.header("Authorization");
-        if (token == null) {
-            ctx.status(401).json(Map.of("error", "Unauthorized"));
+        DecodedJWT decodedJWT = validateAuthHeader(ctx);
+        if (decodedJWT == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized - Invalid or missing token"));
             return;
         }
-        
-        String username = token.split("-")[0];
+
+        String username = jwtService.getUsernameFromToken(decodedJWT);
         List<Map<String, Object>> urls = urlService.getUrlsByUser(username);
-        
+
         ctx.json(urls);
     };
 
@@ -632,4 +633,19 @@ public class App {
             ctx.status(500).json(Map.of("success", false, "error", "Error sincronizando operaciones"));
         }
     };
+
+    // Helper function to extract and validate JWT
+    private static DecodedJWT validateAuthHeader(Context ctx) {
+        String authHeader = ctx.header("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return null; // No or invalid header format
+        }
+        String token = authHeader.substring(7); // Remove "Bearer " prefix
+        try {
+            return jwtService.validateToken(token);
+        } catch (JWTVerificationException e) {
+            System.err.println("JWT Validation failed: " + e.getMessage());
+            return null; // Token invalid or expired
+        }
+    }
 }

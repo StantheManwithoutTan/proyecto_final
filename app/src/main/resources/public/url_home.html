@@ -379,7 +379,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': token
+                    'Authorization': `Bearer ${token}` // Add header
                 },
                 body: JSON.stringify({ originalUrl })
             });
@@ -431,6 +431,11 @@
 
     // Improved loadUserUrls function with better offline handling
     async function loadUserUrls() {
+        if (!token) {
+            console.log('No token found, redirecting to login.');
+            window.location.href = '/login.html';
+            return;
+        }
         const urlsList = document.getElementById('urlsList');
         urlsList.innerHTML = '<tr><td colspan="5" class="text-center"><div class="spinner-border" role="status"></div> Cargando URLs...</td></tr>';
         
@@ -469,7 +474,7 @@
             try {
                 const response = await fetchWithTimeout('/api/urls/user', {
                     headers: {
-                        'Authorization': token
+                        'Authorization': `Bearer ${token}` // Add the Authorization header with Bearer scheme
                     }
                 }, 8000); // 8 second timeout
                 
@@ -501,6 +506,16 @@
         } catch (error) {
             console.error('Error in loadUserUrls:', error);
             urlsList.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
+            if (error.message.includes('401')) { // Handle unauthorized specifically
+                console.error('Unauthorized access. Token might be invalid or expired.');
+                localStorage.removeItem('token'); // Clear invalid token
+                localStorage.removeItem('username');
+                localStorage.removeItem('isAdmin');
+                window.location.href = '/login.html';
+            } else {
+                console.error('Error loading user URLs:', error);
+                // Handle other errors (e.g., show offline data)
+            }
         }
     }
 
@@ -524,6 +539,11 @@
 
     // Function to show analytics
     async function showAnalytics(shortCode) {
+        if (!token) {
+            console.log('No token found, redirecting to login.');
+            window.location.href = '/login.html';
+            return;
+        }
         // Mostrar indicador de carga inmediatamente
         const analyticsModal = new bootstrap.Modal(document.getElementById('analyticsModal'));
         document.getElementById('analyticsUrl').textContent = "Cargando...";
@@ -539,7 +559,7 @@
             console.log('Solicitando analíticas para:', shortCode);
             const response = await fetchWithTimeout(`/api/urls/analytics/${shortCode}`, {
                 headers: {
-                    'Authorization': token
+                    'Authorization': `Bearer ${token}` // Add header
                 }
             }, 8000); // 8 segundos de timeout
             
@@ -612,7 +632,7 @@
                     // Usar un tiempo de espera más largo específicamente para la gráfica
                     const chartResponse = await fetchWithTimeout(`/api/urls/chart/${shortCode}`, {
                         headers: {
-                            'Authorization': token
+                            'Authorization': `Bearer ${token}` // Add header
                         }
                     }, 15000); // 15 segundos de timeout para la gráfica
                     
@@ -706,11 +726,26 @@
         } catch (error) {
             console.error('Error:', error);
             alert('Error al comunicarse con el servidor');
+            if (error.message.includes('401')) { // Handle unauthorized specifically
+                console.error('Unauthorized access. Token might be invalid or expired.');
+                localStorage.removeItem('token'); // Clear invalid token
+                localStorage.removeItem('username');
+                localStorage.removeItem('isAdmin');
+                window.location.href = '/login.html';
+            } else {
+                console.error('Error loading user URLs:', error);
+                // Handle other errors (e.g., show offline data)
+            }
         }
     }
 
     // Delete URL
     async function deleteUrl(shortCode) {
+        if (!token) {
+            console.log('No token found, redirecting to login.');
+            window.location.href = '/login.html';
+            return;
+        }
         if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada?')) {
             return;
         }
@@ -719,7 +754,7 @@
             const response = await fetch(`/api/urls/${shortCode}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': token
+                    'Authorization': `Bearer ${token}` // Add header
                 }
             });
             
@@ -732,11 +767,26 @@
         } catch (error) {
             console.error('Error:', error);
             alert('Error al comunicarse con el servidor');
+            if (error.message.includes('401')) { // Handle unauthorized specifically
+                console.error('Unauthorized access. Token might be invalid or expired.');
+                localStorage.removeItem('token'); // Clear invalid token
+                localStorage.removeItem('username');
+                localStorage.removeItem('isAdmin');
+                window.location.href = '/login.html';
+            } else {
+                console.error('Error loading user URLs:', error);
+                // Handle other errors (e.g., show offline data)
+            }
         }
     }
 
     // Delete any URL (admin only)
     async function deleteAnyUrl(shortCode) {
+        if (!token) {
+            console.log('No token found, redirecting to login.');
+            window.location.href = '/login.html';
+            return;
+        }
         if (!confirm('¿Estás seguro de que deseas eliminar esta URL acortada? Esta acción es irreversible.')) {
             return;
         }
@@ -745,7 +795,7 @@
             const response = await fetch(`/api/admin/urls/${shortCode}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': token
+                    'Authorization': `Bearer ${token}` // Add header
                 }
             });
             
@@ -759,6 +809,16 @@
         } catch (error) {
             console.error('Error:', error);
             alert('Error al comunicarse con el servidor: ' + error.message);
+            if (error.message.includes('401')) { // Handle unauthorized specifically
+                console.error('Unauthorized access. Token might be invalid or expired.');
+                localStorage.removeItem('token'); // Clear invalid token
+                localStorage.removeItem('username');
+                localStorage.removeItem('isAdmin');
+                window.location.href = '/login.html';
+            } else {
+                console.error('Error loading user URLs:', error);
+                // Handle other errors (e.g., show offline data)
+            }
         }
     }
 
@@ -894,11 +954,16 @@
     });
 
     async function loadAllUrls() {
+        if (!token) {
+            console.log('No token found, redirecting to login.');
+            window.location.href = '/login.html';
+            return;
+        }
         try {
             console.log('Cargando todas las URLs (modo admin)...');
             const response = await fetch('/api/admin/urls', {
                 headers: {
-                    'Authorization': token
+                    'Authorization': `Bearer ${token}` // Add header
                 }
             });
             
@@ -997,6 +1062,16 @@
             console.error('Error en loadAllUrls:', error);
             document.getElementById('allUrlsList').innerHTML = 
                 '<tr><td colspan="6" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
+            if (error.message.includes('401')) { // Handle unauthorized specifically
+                console.error('Unauthorized access. Token might be invalid or expired.');
+                localStorage.removeItem('token'); // Clear invalid token
+                localStorage.removeItem('username');
+                localStorage.removeItem('isAdmin');
+                window.location.href = '/login.html';
+            } else {
+                console.error('Error loading user URLs:', error);
+                // Handle other errors (e.g., show offline data)
+            }
         }
     }
 

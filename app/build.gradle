@@ -38,6 +38,9 @@ dependencies {
 
     // XChart para las graficas de java
     implementation 'org.knowm.xchart:xchart:3.8.8'
+
+    // Add Auth0 Java JWT dependency
+    implementation 'com.auth0:java-jwt:4.4.0' // Or the latest version
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

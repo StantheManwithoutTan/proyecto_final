@@ -321,43 +321,48 @@ public class App {
     };
 
     private static Handler handleGetAnalytics = ctx -> {
-        String token = ctx.header("Authorization");
-        if (token == null) {
-            ctx.status(401).json(Map.of("error", "Unauthorized"));
+        // Use the helper function to validate JWT
+        DecodedJWT decodedJWT = validateAuthHeader(ctx);
+        if (decodedJWT == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized - Invalid or missing token"));
             return;
         }
-        
-        String username = token.split("-")[0];
+        // Get username correctly from JWT
+        String username = jwtService.getUsernameFromToken(decodedJWT);
         String shortCode = ctx.pathParam("shortCode");
-        
+
+        // Verify ownership (or admin status if needed) based on the validated username
         Map<String, Object> analytics = urlService.getAnalytics(shortCode, username);
-        
+
         if (analytics == null) {
             ctx.status(404).json(Map.of("error", "URL not found or not owned by you"));
             return;
         }
-        
+
         ctx.json(analytics);
     };
 
     private static Handler handleGetAccessChart = ctx -> {
-        String token = ctx.header("Authorization");
-        if (token == null) {
-            ctx.status(401).json(Map.of("error", "Unauthorized"));
+        // Use the helper function to validate JWT
+        DecodedJWT decodedJWT = validateAuthHeader(ctx);
+        if (decodedJWT == null) {
+            ctx.status(401).json(Map.of("error", "Unauthorized - Invalid or missing token"));
             return;
         }
-        
-        String username = token.split("-")[0];
+        // Get username correctly from JWT
+        String username = jwtService.getUsernameFromToken(decodedJWT);
         String shortCode = ctx.pathParam("shortCode");
-        
+
         // Obtener datos de acceso para este shortCode
+        // Ensure getAnalytics checks ownership correctly based on the validated username
         Map<String, Object> analytics = urlService.getAnalytics(shortCode, username);
-        
+
         if (analytics == null) {
+            // Return 404 or 403 depending on whether it's not found or not authorized
             ctx.status(404).json(Map.of("error", "URL not found or not authorized"));
             return;
         }
-        
+
         // Crear la gráfica usando XChart
         List<Map<String, Object>> accesses = (List<Map<String, Object>>) analytics.get("accesses");
         

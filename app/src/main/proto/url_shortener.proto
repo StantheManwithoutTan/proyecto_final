@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package urlshortener;
+
+option java_package = "proyecto_final.proto";
+option java_multiple_files = true;
+
+service URLShortenerService {
+  rpc Login (LoginRequest) returns (LoginResponse);
+  rpc GetUserUrls (UserRequest) returns (UserUrlsResponse);
+  rpc CreateShortUrl (CreateUrlRequest) returns (ShortUrlResponse);
+  rpc GetUrlAnalytics (UrlAnalyticsRequest) returns (UrlAnalyticsResponse);
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  bool success = 1;
+  string token = 2;
+  bool is_admin = 3;
+  string message = 4;
+}
+
+message UserRequest {
+  string token = 1;
+}
+
+message UserUrlsResponse {
+  repeated ShortUrlInfo urls = 1;
+}
+
+message ShortUrlInfo {
+  string short_code = 1;
+  string original_url = 2;
+  string created_at = 3;
+  int32 access_count = 4;
+}
+
+message CreateUrlRequest {
+  string token = 1;
+  string original_url = 2;
+}
+
+message ShortUrlResponse {
+  string short_code = 1;
+  string original_url = 2;
+  string full_short_url = 3;
+  string created_at = 4;
+  string preview_image_base64 = 5;
+}
+
+message UrlAnalyticsRequest {
+  string token = 1;
+  string short_code = 2;
+}
+
+message UrlAnalyticsResponse {
+  string short_code = 1;
+  string original_url = 2;
+  string created_at = 3;
+  int32 access_count = 4;
+  map<string, int32> browsers = 5;
+  map<string, int32> operating_systems = 6;
+  repeated AccessInfo accesses = 7;
+}
+
+message AccessInfo {
+  string timestamp = 1;
+  string ip = 2;
+  string browser = 3;
+  string os = 4;
+}

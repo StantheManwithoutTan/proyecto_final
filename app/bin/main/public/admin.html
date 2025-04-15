@@ -70,7 +70,7 @@
             try {
                 const response = await fetch('/api/admin/users', {
                     headers: {
-                        'Authorization': token
+                        'Authorization': 'Bearer ' + token  // Añadir el prefijo 'Bearer '
                     }
                 });
 
@@ -130,7 +130,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': token
+                        'Authorization': 'Bearer ' + token  // Añadir el prefijo 'Bearer '
                     },
                     body: JSON.stringify({ 
                         adminUsername: username, 
@@ -161,7 +161,7 @@
                 const response = await fetch(`/api/admin/users/${userToDelete}`, {
                     method: 'DELETE',
                     headers: {
-                        'Authorization': token
+                        'Authorization': 'Bearer ' + token  // Añadir el prefijo 'Bearer '
                     }
                 });
 

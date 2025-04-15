@@ -1,8 +1,25 @@
 import requests
 import json
+import os  # Añadir importación para variables de entorno
 
-BASE_URL = "http://localhost:7000/api"  # Your API base URL
+BASE_URL = "http://localhost:7000/api"
 jwt_token = None
+
+# Función nueva para mostrar la URL de MongoDB
+def get_mongodb_url():
+    """Retrieves and returns the MongoDB connection URL."""
+    mongodb_url = os.getenv("URL_MONGO")
+    if mongodb_url:
+        # Ocultar contraseña para mostrar (opcional)
+        safe_url = mongodb_url
+        if "@" in mongodb_url:
+            parts = mongodb_url.split("@")
+            credentials = parts[0].split("://")[1]
+            user = credentials.split(":")[0]
+            safe_url = mongodb_url.replace(credentials, f"{user}:****")
+        return safe_url
+    else:
+        return "No configurada. Por favor, establece la variable de entorno URL_MONGO."
 
 def register_user(username, password):
     """Registers a new user."""
@@ -107,17 +124,28 @@ def get_user_urls():
 # --- Example Usage ---
 if __name__ == "__main__":
     print("--- URL Shortener Client ---")
+    
+    # Mostrar URL de MongoDB
+    print(f"MongoDB URL: {get_mongodb_url()}")
+    print("-" * 40)
 
-    # Example: Register a new user (optional)
-    # register_user("testuser_py", "password123")
-
-    # Example: Login
-    if login_user("api", "api"): # Replace with a valid username/password
-        # Example: Shorten a URL
-        shorten_url("https://www.example.com/a-very-long-url-that-needs-shortening")
-        shorten_url("google.com") # Example without http://
-
-        # Example: List user's URLs
-        get_user_urls()
+    username = "test"
+    password = "test"
+    print(f"Iniciando sesión como {username}...")
+    
+    if login_user(username, password):
+        print("\n=== Obteniendo URLs existentes ===")
+        # Obtener las URLs actuales del usuario
+        urls = get_user_urls()
+        
+        # Solo crear nuevas URLs si el usuario no tiene ninguna
+        if not urls or len(urls) == 0:
+            print("\n=== No se encontraron URLs, creando ejemplos ===")
+            shorten_url("https://www.example.com/a-very-long-url-that-needs-shortening")
+            shorten_url("google.com")
+            
+            # Actualizar la lista de URLs
+            print("\n=== URLs después de crear ejemplos ===")
+            get_user_urls()
     else:
         print("\nCannot perform further actions without logging in.")

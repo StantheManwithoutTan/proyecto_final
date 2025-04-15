@@ -18,6 +18,7 @@ import proyecto_final.model.Session;
 import proyecto_final.service.JwtService; // Import JwtService
 import com.auth0.jwt.exceptions.JWTVerificationException; // Import exceptions
 import com.auth0.jwt.interfaces.DecodedJWT; // Import DecodedJWT
+import proyecto_final.grpc.URLShortenerGrpcServer; // Import gRPC server
 
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +46,10 @@ import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import java.util.EnumMap;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import javax.imageio.ImageIO;
 
 public class App {
     private static UserService userService;
@@ -91,6 +96,20 @@ public class App {
         app.get("/api/admin/urls", handleGetAllUrls);
         app.delete("/api/admin/urls/{shortCode}", handleDeleteAnyUrl);
         
+        // Añade esta nueva ruta junto con las otras rutas admin
+        app.get("/api/admin/noauth/urls", ctx -> {
+            String requestUsername = ctx.queryParam("username");
+            String requestPassword = ctx.queryParam("password");
+            
+            // Verifica credenciales de administrador directamente
+            if ("admin".equals(requestUsername) && "tu_contraseña_segura".equals(requestPassword)) {
+                // Esta es una ruta admin que no requiere token JWT
+                ctx.json(urlService.getAllUrls());
+            } else {
+                ctx.status(401).json(Map.of("error", "Acceso no autorizado"));
+            }
+        });
+        
         // URL Shortener API endpoints
         app.post("/api/urls/shorten", handleShortenUrl);
         app.get("/api/urls/user", handleGetUserUrls);
@@ -107,6 +126,20 @@ public class App {
         
         // Sync operations endpoint
         app.post("/api/sync/urls", handleSyncOperations);
+        
+        // Iniciar servidor gRPC en el puerto 50051
+        try {
+            URLShortenerGrpcServer grpcServer = new URLShortenerGrpcServer(
+                50051, 
+                urlService, 
+                userService,
+                jwtService
+            );
+            grpcServer.start();
+            System.out.println("gRPC server started, listening on port 50051");
+        } catch (IOException e) {
+            System.err.println("Error starting gRPC server: " + e.getMessage());
+        }
         
         // Add shutdown hook to close MongoDB connection
         Runtime.getRuntime().addShutdownHook(new Thread(MongoDBConfig::close));
@@ -393,6 +426,27 @@ public class App {
             } catch (ParseException e) {
                 e.printStackTrace();
             }
+        }
+        
+        // Check if there's data before creating the chart
+        if (dates.isEmpty() || counts.isEmpty()) {
+            // Create a simple "No data" image instead of trying to generate an empty chart
+            BufferedImage noDataImage = new BufferedImage(600, 300, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = noDataImage.createGraphics();
+            // Set white background
+            g2d.setColor(Color.WHITE);
+            g2d.fillRect(0, 0, 600, 300);
+            // Draw "No data available" message
+            g2d.setColor(Color.BLACK);
+            g2d.setFont(new Font("Arial", Font.BOLD, 20));
+            g2d.drawString("No data available for this URL", 150, 150);
+            g2d.dispose();
+            
+            // Convert to bytes and return
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(noDataImage, "PNG", baos);
+            ctx.contentType("image/png").result(baos.toByteArray());
+            return;
         }
         
         // Simplificación de la generación de gráficos

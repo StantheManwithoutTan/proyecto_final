@@ -3,3 +3,12 @@
 
 # Ignore Gradle build output directory
 build
+
+
+venv/
+venv_grpc/
+
+# Add both venv directories to .gitignore
+
+__pycache__/
+*.py[cod]

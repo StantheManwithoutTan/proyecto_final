@@ -356,4 +356,36 @@ public class UrlService {
             return false;
         }
     }
+
+    /**
+     * Get all URLs with pagination support
+     * @param page Page number (starting from 1)
+     * @param limit Items per page
+     * @return Map with urls, pagination info and total count
+     */
+    public Map<String, Object> getAllUrlsPaginated(int page, int limit) {
+        Map<String, Object> result = new HashMap<>();
+        
+        // Get all URLs first (we'll implement proper DB-level pagination later)
+        List<Map<String, Object>> allUrls = getAllUrls();
+        
+        int total = allUrls.size();
+        int startIndex = (page - 1) * limit;
+        int endIndex = Math.min(startIndex + limit, total);
+        
+        // Validate indices to prevent out of bounds errors
+        if (startIndex >= total) {
+            startIndex = Math.max(0, total - limit);
+            endIndex = total;
+        }
+        
+        List<Map<String, Object>> paginatedUrls = allUrls.subList(startIndex, endIndex);
+        
+        result.put("urls", paginatedUrls);
+        result.put("total", total);
+        result.put("page", page);
+        result.put("limit", limit);
+        
+        return result;
+    }
 }
